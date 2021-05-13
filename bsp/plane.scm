@@ -3,6 +3,7 @@
                #:use-module (bsp vec3)
                #:use-module (bsp line)
                #:export (make-plane
+                         make-plane-from-points
                          plane-point
                          plane-normal
                          plane-cmp-point
@@ -11,6 +12,10 @@
 
 (define (make-plane point normal)
   (cons point normal))
+
+(define (make-plane-from-points p0 p1 p2)
+  (make-plane p0 (v3:norm (v3:cross (v3:sub p1 p0)
+                                    (v3:sub p2 p0)))))
 
 (define (plane-point plane)
   (car plane))

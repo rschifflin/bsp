@@ -9,16 +9,15 @@
                          v3:norm))
 ;; Simple vector-3 math
 (define (@x v)
-  (list-ref v 0))
+  (f32vector-ref v 0))
 
 (define (@y v)
-  (list-ref v 1))
+  (f32vector-ref v 1))
 
 (define (@z v)
-  (list-ref v 2))
+  (f32vector-ref v 2))
 
-(define (make-vec3 x y z)
-  `(,x ,y ,z))
+(define make-vec3 f32vector)
 
 (define (v3:sum v0 v1)
   (make-vec3 (+ (@x v0) (@x v1))
