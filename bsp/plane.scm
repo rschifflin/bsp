@@ -30,7 +30,7 @@
 (define (plane-cmp-point plane point)
   (let ((normal-component (v3:dot (v3:sub point (plane-point plane))
                                   (plane-normal plane)))
-        (tolerance 0.0))
+        (tolerance 0.0001))
     (cond [(> normal-component tolerance) '+]
           [(< normal-component (-  tolerance)) '-]
           [else '=])))

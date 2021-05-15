@@ -1,6 +1,7 @@
 (define-module (bsp vec3)
                #:export (@x @y @z
                          make-vec3
+                         vec3->vector
                          v3:sum
                          v3:sub
                          v3:scale
@@ -19,6 +20,9 @@
 
 (define make-vec3 f32vector)
 
+(define (vec3->vector v)
+  (list->vector `(,(@x v) ,(@y v) ,(@z v))))
+
 (define (v3:sum v0 v1)
   (make-vec3 (+ (@x v0) (@x v1))
            (+ (@y v0) (@y v1))
@@ -35,12 +39,13 @@
            (* (@z v) s)))
 
 (define (v3:cross v0 v1)
-  (make-vec3 (- (* (@x v0) (@z v1))
-              (* (@z v0) (@y v1)))
-           (- (* (@z v0) (@x v1))
-              (* (@x v0) (@z v1)))
-           (- (* (@x v0) (@y v1))
-              (* (@y v0) (@x v1)))))
+  (make-vec3
+    (- (* (@y v0) (@z v1))
+       (* (@z v0) (@y v1)))
+    (- (* (@z v0) (@x v1))
+       (* (@x v0) (@z v1)))
+    (- (* (@x v0) (@y v1))
+       (* (@y v0) (@x v1)))))
 
 (define (v3:dot v0 v1)
   (+ (* (@x v0) (@x v1))
