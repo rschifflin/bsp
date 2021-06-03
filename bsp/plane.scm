@@ -7,6 +7,7 @@
                          plane-point
                          plane-normal
                          plane-cmp-point
+                         plane-cmp-line
                          plane-test-face
                          plane-line-intersection))
 
@@ -26,14 +27,31 @@
 ;;; Test a point on a plane
 ;;; Returns the sign of the point w/r/t the plane:
 ;;; = for planar, otherwise + or -
-;;; NOTE: A tolerance epsilon may be wanted for points very nearly on the plane
+;;; TODO: Use a proper epsilon comparison
 (define (plane-cmp-point plane point)
   (let ((normal-component (v3:dot (v3:sub point (plane-point plane))
                                   (plane-normal plane)))
         (tolerance 0.0001))
     (cond [(> normal-component tolerance) '+]
-          [(< normal-component (-  tolerance)) '-]
+          [(< normal-component (- tolerance)) '-]
           [else '=])))
+
+;;; Test a line on a plane
+;;; Returns the intersection of the line w/r/t the plane:
+;;;   'none if no intersections
+;;;   'inf if infinitely many intersections (line and plane coincide)
+;;;   vec3 of the intersection point otherwise
+(define (plane-cmp-line plane line)
+  (let* ((l0 (line-point line))
+         (l  (line-dir line))
+         (p0 (plane-point plane))
+         (n  (plane-normal plane))
+         (n-dot-p (v3:dot n (v3:sub p0 l0)))
+         (n-dot-l (v3:dot n l)))
+    (if (= n-dot-l 0.0) ; Parallel case, either no intersections or infinite
+        (if (= n-dot-p 0.0) 'inf 'none)
+        (let ((scale (/ n-dot-p n-dot-l))) ; Otherwise, exactly 1 intersection
+          (v3:sum l0 (v3:scale l scale))))))
 
 ;;; Test a polygon for intersection with a plane
 ;;; Returns ADT, one of:
@@ -45,11 +63,11 @@
   (let* ((signs (map (lambda (point) (plane-cmp-point plane point))
                      points)))
 
-      (cond [(all? signs (lambda (sign) (eq? sign '=)))
+      (cond [(all? (lambda (sign) (eq? sign '=)) signs)
              '(#f =)]
-            [(all? signs (lambda (sign) (or (eq? sign '=) (eq? sign '+))))
+            [(all? (lambda (sign) (or (eq? sign '=) (eq? sign '+))) signs)
              '(#f +)]
-            [(all? signs (lambda (sign) (or (eq? sign '=) (eq? sign '-))))
+            [(all? (lambda (sign) (or (eq? sign '=) (eq? sign '-))) signs)
              '(#f -)]
             [else `(#t ,signs)])))
 

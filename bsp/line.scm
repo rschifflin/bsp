@@ -9,7 +9,11 @@
   (cons point dir))
 
 (define (make-line-from-points p0 p1)
-  (make-line p0 (v3:norm (v3:sub p1 p0))))
+  ;; Tricky edge case:
+  ;; A line from a->b might be subtly different than b->a due to floating point error.
+  ;; Therefore we use a strict ordering of points so that we always return the same line
+  ;; for the same two points
+  (make-line p0 (v3:norm (apply v3:sub (v3:ord > p0 p1)))))
 
 (define (line-point line)
   (car line))

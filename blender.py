@@ -10,13 +10,28 @@ def write_concave_json():
     file.write(json.dumps(obj))
     file.close()
 
+# Blender export currently selected mesh as plane
+import sys
+import json
+def write_plane_sexp():
+    name = C.object.name
+    loc = C.object.location
+    norm = C.object.data.vertices[0].normal
+    sexp = f"""(define {name}
+                   (make-plane
+                       (make-vec3 {loc[0]} {loc[1]} {loc[2]})
+                       (make-vec3 {norm[0]} {norm[1]} {norm[2]})))"""
+    file = open("polygon.sexp", "w")
+    file.write(sexp)
+    file.close()
+
 # Blender import json as new mesh objects
 import sys
 import json
 import bpy
 
-def read_convex_json():
-    file = open("convex.json", "r")
+def read_json(filename):
+    file = open(filename, "r")
     obj = json.loads(file.read())
     file.close()
     for n, convex in enumerate(obj):
