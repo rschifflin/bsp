@@ -1,7 +1,9 @@
 (define-module (bsp bounds)
                #:use-module (bsp vec3)
                #:use-module (bsp line)
-               #:export (within-bounds
+               #:use-module (bsp line)
+               #:export (make-boundary
+                         within-bounds
                          bounds-lines
                          bounds-corners
                          bounds-line-count))
@@ -99,6 +101,7 @@
     (L11 . 10)
     (L12 . 11)))
 
+(define make-boundary identity)
 (define bounds-line-count 12)
 (define (within-bounds boundary point)
   (and

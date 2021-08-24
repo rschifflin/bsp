@@ -1,4 +1,5 @@
 (define-module (bsp plane)
+               #:use-module (rnrs bytevectors)
                #:use-module (bsp list)
                #:use-module (bsp vec3)
                #:use-module (bsp line)
@@ -9,7 +10,11 @@
                          plane-cmp-point
                          plane-cmp-line
                          plane-test-face
-                         plane-line-intersection))
+                         plane-line-intersection
+                         plane-flip
+                         plane->u8vector
+                         plane=
+                         plane~=))
 
 (define (make-plane point normal)
   (cons point normal))
@@ -24,17 +29,49 @@
 (define (plane-normal plane)
   (cdr plane))
 
+;;; TODO: Use a proper epsilon comparison
+(define TOLERANCE 0.0001)
+
 ;;; Test a point on a plane
 ;;; Returns the sign of the point w/r/t the plane:
 ;;; = for planar, otherwise + or -
-;;; TODO: Use a proper epsilon comparison
 (define (plane-cmp-point plane point)
   (let ((normal-component (v3:dot (v3:sub point (plane-point plane))
                                   (plane-normal plane)))
-        (tolerance 0.0001))
-    (cond [(> normal-component tolerance) '+]
-          [(< normal-component (- tolerance)) '-]
+        (TOLERANCE 0.0001))
+    (cond [(> normal-component TOLERANCE) '+]
+          [(< normal-component (- TOLERANCE)) '-]
           [else '=])))
+
+(define (plane-flip p)
+  (let ((point (plane-point p))
+        (normal (plane-normal p)))
+    (make-plane point
+                (make-vec3 (- (@x normal))
+                           (- (@y normal))
+                           (- (@z normal))))))
+
+;;; True if two planes are equal
+(define (plane= p1 p2)
+  (and (v3:= (plane-normal p1) (plane-normal p2))
+       (let* ((difference (v3:sub (plane-point p2) (plane-point p1)))
+              (dot (v3:dot difference (plane-normal p1))))
+         (= dot 0))))
+
+;;; True if two planes are equal, allowing normals with opposite direction
+(define (plane~= p1 p2)
+  (or (plane= p1 p2)
+      (plane= p1 (plane-flip p2))))
+
+(define (plane->u8vector p)
+  (let* ((point-u8vector (vec3->u8vector (plane-point p)))
+         (normal-u8vector (vec3->u8vector (plane-normal p)))
+         (point-len (u8vector-length point-u8vector))
+         (normal-len (u8vector-length normal-u8vector))
+         (plane-u8vector (make-u8vector (+ point-len normal-len))))
+    (bytevector-copy! point-u8vector 0 plane-u8vector 0 point-len)
+    (bytevector-copy! normal-u8vector 0 plane-u8vector point-len normal-len)
+    plane-u8vector))
 
 ;;; Test a line on a plane
 ;;; Returns the intersection of the line w/r/t the plane:

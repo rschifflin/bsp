@@ -2,6 +2,11 @@
                #:export (@x @y @z
                          make-vec3
                          vec3->vector
+                         vec3->u8vector
+                         vec3-hash
+                         v3:=
+                         v3:~=
+                         v3:<
                          v3:ord
                          v3:sum
                          v3:sub
@@ -36,6 +41,36 @@
 
 (define (vec3->vector v)
   (list->vector `(,(@x v) ,(@y v) ,(@z v))))
+
+(define vec3->u8vector identity)
+
+(define (vec3-hash v size)
+  (remainder
+    (+ (* 5 (hash (@x v) size))
+       (* 3 (hash (@y v) size))
+       (hash (@z v) size))
+    size))
+
+(define (v3:= v0 v1)
+  (and (= (@x v0) (@x v1))
+       (= (@y v0) (@y v1))
+       (= (@z v0) (@z v1))))
+
+(define (v3:~= v0 v1)
+  (define (~= x y)
+    (and (< (- x y) 0.0001)
+         (> (- x y) -0.0001)))
+
+  (and (~= (@x v0) (@x v1))
+       (~= (@y v0) (@y v1))
+       (~= (@z v0) (@z v1))))
+
+(define (v3:< v0 v1)
+  (if (= (@x v0) (@x v1))
+      (if (= (@y v0) (@y v1))
+          (< (@z v0) (@z v1))
+          (< (@y v0) (@y v1)))
+      (< (@x v0) (@x v1))))
 
 (define (v3:sum v0 v1)
   (make-vec3 (+ (@x v0) (@x v1))

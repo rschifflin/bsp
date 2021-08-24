@@ -37,6 +37,6 @@ def read_json(filename):
     for n, convex in enumerate(obj):
         bpy.ops.object.add(type='MESH', enter_editmode=False, location=(0,0,0))
         mesh = C.object
-        mesh.name = "Convex part " + str(n)
+        mesh.name = "Mesh #" + str(n)
         mesh.data.from_pydata(convex["vertices"], [], convex["faces"])
         mesh.data.update()

@@ -4,6 +4,7 @@
   (srfi srfi-43) ; Vector map
   (srfi srfi-180) ; Json parsing
   (ice-9 receive) ; Multiple-returns
+  (bsp bounds)
   (bsp alist)
   (bsp vec3)
   (bsp lib))
@@ -18,11 +19,11 @@
 (define faces (vector->list
                 (vector-map (lambda (_index face)
                               (vector->list (vector-map (lambda (_index vert-idx)
-                                                          (let* ((points (vector-ref (aref poly 'vertices) vert-idx))
-                                                                 (p0 (vector-ref points 0))
-                                                                 (p1 (vector-ref points 1))
-                                                                 (p2 (vector-ref points 2)))
-                                                            (make-vec3 p0 p1 p2)))
+                                                          (let* ((vertex (vector-ref (aref poly 'vertices) vert-idx))
+                                                                 (x (vector-ref vertex 0))
+                                                                 (y (vector-ref vertex 1))
+                                                                 (z (vector-ref vertex 2)))
+                                                            (make-vec3 x y z)))
                                                         face)))
                             (aref poly 'faces))))
 
@@ -33,6 +34,8 @@
 (newline)
 
 (define tree (make-bsp-tree faces))
+(define boundary (make-boundary 20.0))
+(add-bsp-portals! tree faces boundary)
 (define leafs (bsp-+leafs tree))
 
 (display "Bsp tree complete")
@@ -75,9 +78,10 @@
 (define convex-out (list->vector (map (lambda (leaf)
                                         (receive (verts faces)
                                                  (make-indexed-faces leaf)
+                                                 (display (length (vector->list faces)))
+                                                 (newline)
                                                  `((vertices . ,verts) (faces . ,faces))))
                                       leafs)))
-
 (call-with-output-file "convex.json" (lambda (port) (json-write convex-out port)))
 
 (display "Export complete")

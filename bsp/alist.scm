@@ -1,8 +1,17 @@
 (define-module (bsp alist)
                #:use-module (srfi srfi-1)
-               #:export (aref
+               #:export (alist?
+                         aref
                          aset!
                          amerge))
+
+;; Predicate for determining if a list is an alist
+(define (alist? lst)
+  (if (null? lst)
+      #t
+      (if (pair? (car lst))
+          (alist? (cdr lst))
+          #f)))
 
 ;; Helpers for alists using eq?
 (define aref assq-ref)

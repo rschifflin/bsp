@@ -4,11 +4,11 @@
                #:use-module (bsp fn)
                #:use-module (bsp macros)
                #:use-module (bsp list)
-               #:use-module (bsp alist)
-               #:use-module (bsp vector)
+               #:use-module (bsp plist)
                #:use-module (bsp bounds)
                #:use-module (bsp plane)
                #:use-module (bsp line)
+               #:use-module (bsp face)
                #:use-module (bsp vec3)
                #:use-module (bsp mat3)
                #:export (clip-plane-boundary
@@ -43,6 +43,7 @@
                  (sorted (sort-list `((,PI . ,origin) . ,ranks) (lambda (a b) (< (car a) (car b))))))
             (cons p0 (map cdr sorted)))]))
 
+;; Returns either a face representing the clipped plane against the boundary or #f
 (define (clip-plane-boundary plane boundary)
   (let* ((corners         (bounds-corners boundary)) ;; list of (point line-index line-index line-index) ...
          (line-candidates (make-bitvector bounds-line-count 1)) ;; Shortcut to ignore lines already covered by corners
@@ -70,12 +71,13 @@
                                           ((within-bounds boundary point)))
                                          point))
                       (self (cdr line-indices) (cons point points))
-                      (self (cdr line-indices) points))))))
-
+                      (self (cdr line-indices) points)))))
+          (sorted-points (sort-convex-points points (plane-normal plane))))
     ;; Given set of points that lie on a both a plane and the edges of a bounding square
     ;; Find an ordering for the convex shape formed by the points
     ;; Returns false if the points don't form a polygon
-    (sort-convex-points points (plane-normal plane))))
+    (and sorted-points
+         (make-face sorted-points))))
 
 ;;; Clip a face by a plane
 ;;; Returns ADT, one of:
@@ -85,85 +87,64 @@
   (let* ((test-result (plane-test-face plane face))
          (needs-clip? (car test-result)))
 
-    ;; clip props are an alist
-    ;; '(+face . (indices...))
-    ;; '(-face . (indices...))
-    ;; '(prev . (point sign))
+    ;; clip props are a plist
+    ;; '+face face-builder '-face face-builder 'prev (point sign)
     (define (clip-point point,sign props)
-      (let ((+face (aref props '+face))
-            (-face (aref props '-face))
-            (prev-point (car (aref props 'prev)))
-            (prev-sign (cadr (aref props 'prev)))
+      (let ((+face (plist-ref props '+face))
+            (-face (plist-ref props '-face))
+            (prev-point (car (plist-ref props 'prev)))
+            (prev-sign (cadr (plist-ref props 'prev)))
             (point (car point,sign))
             (sign (cadr point,sign)))
 
         (cond [(eq? sign '=) ; Planar case; add the idx to both faces
-               (let ((+face (cons point +face))
-                     (-face (cons point -face)))
-                 (amerge props `((+face . ,+face)
-                                 (-face . ,-face)
-                                 (prev . ,point,sign))))]
+               (let ((+face (face-builder-add-point +face point))
+                     (-face (face-builder-add-point -face point)))
+                 (plist-merge props (list
+                                      '+face +face
+                                      '-face -face
+                                      'prev  point,sign)))]
 
               [(and (eq? sign '+)
                     (not (eq? prev-sign '-))) ; Positive non-intersecting case; add idx to positive face
-               (let ((+face (cons point +face)))
-                    (amerge props `((+face . ,+face)
-                                    (prev . ,point,sign))))]
+               (let ((+face (face-builder-add-point +face point)))
+                    (plist-merge props (list
+                                         '+face +face
+                                         'prev  point,sign)))]
 
               [(and (eq? sign '-)
                     (not (eq? prev-sign '+))) ; Negative non-intersecting case; add idx to negative face
-               (let ((-face (cons point -face)))
-                    (amerge props `((-face . ,-face)
-                                    (prev . ,point,sign))))]
+               (let ((-face (face-builder-add-point -face point)))
+                    (plist-merge props (list
+                                         '-face -face
+                                         'prev  point,sign)))]
 
               [else ; intersecting case; generate intermediate planar vertex. Add to both faces
                 (let* ((line (make-line-from-points prev-point point))
-                       (vert (plane-line-intersection plane line))
+                       (intersection (plane-line-intersection plane line))
                        (+face (if (eq? sign '+)
-                                  (cons point (cons vert +face))
-                                  (cons vert +face)))
+                                  (face-builder-add-points +face `(,intersection ,point))
+                                  (face-builder-add-point +face intersection)))
                        (-face (if (eq? sign '-)
-                                  (cons point (cons vert -face))
-                                  (cons vert -face))))
-                  (amerge props `((+face . ,+face)
-                                  (-face . ,-face)
-                                  (prev . ,point,sign))))])))
+                                  (face-builder-add-points -face `(,intersection ,point))
+                                  (face-builder-add-point -face intersection))))
+                  (plist-merge props (list
+                                       '+face +face
+                                       '-face -face
+                                       'prev  point,sign)))])))
 
     (define (clip signs)
       (let* ((face+signs (zip face signs))
              (p0    (car face+signs))
              (ptail (cdr face+signs))
-             (props `((+face . ())
-                      (-face . ())
-                      (prev . ,p0)))
+             (props (list '+face face-builder
+                          '-face face-builder
+                          'prev p0))
              (props (clip-point p0 (fold clip-point props ptail)))
-             (+face (reverse (aref props '+face)))
-             (-face (reverse (aref props '-face))))
+             (+face (build-face (plist-ref props '+face)))
+             (-face (build-face (plist-ref props '-face))))
           `(,+face ,-face)))
 
     (if needs-clip?
       `(clipped . ,(clip (cadr test-result)))
       `(unclipped ,(cadr test-result)))))
-
-#| TODO: Testing
-
-(let* ((clip-result (clip-plane-face plane face))
-       (clipped? (eq? 'clipped (car clip-result))))
-
-  (if clipped?
-      (let* ((+face (list-ref clip-result 1))
-             (-face (list-ref clip-result 2)))
-        (display "CLIPPED")
-        (newline)
-        (display +face)
-        (newline)
-        (display -face))
-
-      ;; Else, unclipped
-      (let ((sign (cadr clip-result)))
-        (cond [(eq? sign '=) (display "PLANAR, NOTHING TO CLIP")]
-              [(eq? sign '+) (display "POSITIVE, NOTHING TO CLIP")]
-              [(eq? sign '-) (display "NEGATIVE, NOTHING TO CLIP")])))
-        (newline))
-|#
-

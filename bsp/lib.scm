@@ -4,13 +4,19 @@
 ;;; Returns vertices . faces
 ;;; A vertex is a 3d point
 ;;; A face is a planar convex polygon composed of vertex indices
-
 (define-module (bsp lib)
                #:use-module (srfi srfi-1)
                #:use-module (ice-9 receive)
+               #:use-module (bsp list)
                #:use-module (bsp plane)
+               #:use-module (bsp face)
+               #:use-module (bsp vec3)
                #:use-module (bsp clip)
+               #:use-module (bsp hash)
                #:export (make-bsp-tree
+                         add-bsp-portals!
+                         empty-bsp-tree!
+                         face->plane
                          bsp-+leafs))
 
 ;;; Choose from a working-set a polygon-face to define the splitting plane
@@ -24,7 +30,6 @@
          (p1 (list-ref face 1))
          (p2 (list-ref face 2)))
     (make-plane-from-points p0 p1 p2)))
-
 
 (define (partition-splits faces,clips)
   ;;; Returns three values, +face, -face, =face
@@ -48,7 +53,6 @@
                        (if (null? -split) -splits (cons -split -splits))
                        (if (null? =split) =splits (cons =split =splits)))))))
 
-
 (define (make-bsp-tree faces)
   (define (make-bsp-tree candidate-faces applied-faces)
     (if (null? candidate-faces) `(leaf ,applied-faces)
@@ -71,13 +75,64 @@
                                 (+applied-faces (append +applied =applied =candidates))
                                 (-applied-faces -applied))
 
-
                             ;; Return tree with splitting plane, lhs negative and rhs positive
-                            `(node
+                            `(branch
                                ,splitting-plane
                                ,(make-bsp-tree -candidate-faces -applied-faces)
                                ,(make-bsp-tree +candidate-faces +applied-faces))))))))
   (make-bsp-tree faces '()))
+
+(define (empty-bsp-tree! tree)
+  (if (eq? (car tree) 'leaf)
+      (set-car! (cdr tree) '())
+     (begin
+       (empty-bsp-tree! (list-ref tree 2))
+       (empty-bsp-tree! (list-ref tree 3)))))
+
+;; Takes a list of faces, turns them into boundary-clipped polys, then inserts them into the bsp tree in a special way
+;; When portal polys lie coincident with a branch plane, they get sent down _both_ ends of the branch with opposite windings, as siblings!
+;; When they eventually settle into their respective convex hull, they join the two sibling hulls with the notion of being connected via portal.
+;; This means the +hull can "see" the -hull and is used for visibility, collision detection, etc
+(define (add-bsp-portals!
+          tree            ; BSP-tree
+          faces           ; List of convex polygons
+          boundary)       ; dimensions which are sufficient to contain all faces
+  (define (add-bsp-portal! tree face side)
+    (if (eq? (car tree) 'leaf)
+        ;; Check (cadr tree) for duplicate faces
+        ;; If none match, add this portal as the third element to tree
+
+        ;; Only care about leafy portals
+        (if (eq? side 'rhs)
+            (if (not (find (lambda (other) (face~= face other)) (cadr tree)))
+                (set-car! (cdr tree) (cons face (cadr tree)))))
+
+        (let* ((clip (clip-plane-face (cadr tree) face)))
+          ;; Planar faces are moved to BOTH sets. In the future they'll be married by a common index
+          ;; This is because these two 'matching' faces glue the convex hulls together w/ empty space
+          (cond [(eq? (car clip) 'clipped)
+                 (begin
+                   (add-bsp-portal! (list-ref tree 3) (list-ref clip 1) 'rhs)
+                   (add-bsp-portal! (list-ref tree 2) (list-ref clip 2) 'lhs))]
+                [(eq? (cadr clip) '+)
+                 (add-bsp-portal! (list-ref tree 3) face 'rhs)]
+                [(eq? (cadr clip) '-)
+                 (add-bsp-portal! (list-ref tree 2) face 'lhs)]
+                [(eq? (cadr clip) '=)
+                 (begin
+                   (add-bsp-portal! (list-ref tree 3) face 'rhs)
+                   (add-bsp-portal! (list-ref tree 2) face 'lhs))]))))
+
+  (let* ((planes (map face->plane faces))
+         (clip (lambda (plane) (clip-plane-boundary plane boundary)))
+         (table-len (length planes))
+         (hash-plane (lambda (plane size)
+                       (let ((h1 (vec3-hash (plane-normal plane) size))
+                             (h2 (vec3-hash (plane-normal (plane-flip plane)) size)))
+                         (hash (+ h1 h2) size))))
+         (unique-planes (dedup-hash planes hash-plane plane~=))
+         (bounds-faces (map clip unique-planes)))
+    (for-each (lambda (face) (add-bsp-portal! tree face 'rhs)) bounds-faces)))
 
 ;; Just the positive leafs of the bsp-tree
 (define (bsp-+leafs bsp-tree)
@@ -87,7 +142,7 @@
                 (eq? side 'lhs)) leafs]
           [(and (eq? (car bsp-tree) 'leaf)
                 (eq? side 'rhs)) (cons (cadr bsp-tree) leafs)]
-          [(eq? (car bsp-tree) 'node)
+          [(eq? (car bsp-tree) 'branch)
                 (self
                   (list-ref bsp-tree 3)
                   (self (list-ref bsp-tree 2) leafs 'lhs)
