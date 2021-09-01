@@ -7,6 +7,7 @@
                          v3:=
                          v3:~=
                          v3:<
+                         v3:~<
                          v3:ord
                          v3:sum
                          v3:sub
@@ -56,11 +57,13 @@
        (= (@y v0) (@y v1))
        (= (@z v0) (@z v1))))
 
-(define (v3:~= v0 v1)
-  (define (~= x y)
-    (and (< (- x y) 0.0001)
-         (> (- x y) -0.0001)))
+(define EPSILON 0.0001)
 
+(define (~= x y)
+  (and (< (- x y) EPSILON)
+       (> (- x y) (- EPSILON))))
+
+(define (v3:~= v0 v1)
   (and (~= (@x v0) (@x v1))
        (~= (@y v0) (@y v1))
        (~= (@z v0) (@z v1))))
@@ -69,6 +72,14 @@
   (if (= (@x v0) (@x v1))
       (if (= (@y v0) (@y v1))
           (< (@z v0) (@z v1))
+          (< (@y v0) (@y v1)))
+      (< (@x v0) (@x v1))))
+
+(define (v3:~< v0 v1)
+  (if (~= (@x v0) (@x v1))
+      (if (~= (@y v0) (@y v1))
+          (and (not (~= (@z v0) (@z v1)))
+               (< (@z v0) (@z v1)))
           (< (@y v0) (@y v1)))
       (< (@x v0) (@x v1))))
 

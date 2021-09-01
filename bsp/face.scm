@@ -27,8 +27,8 @@
 
 (define (face~= f0 f1)
   (and (= (length f0) (length f1))
-       (let ((f0-sorted (sort f0 v3:<))
-             (f1-sorted (sort f1 v3:<)))
+       (let ((f0-sorted (sort f0 v3:~<))
+             (f1-sorted (sort f1 v3:~<)))
          (let self ((lst0 f0-sorted) (lst1 f1-sorted))
            (cond [(null? lst0) #t]
                  [(not (v3:~= (car lst0) (car lst1))) #f]

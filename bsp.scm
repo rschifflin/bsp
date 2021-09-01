@@ -37,6 +37,7 @@
 (define boundary (make-boundary 20.0))
 (add-bsp-portals! tree faces boundary)
 (define leafs (bsp-+leafs tree))
+(define portals (bsp-+portals tree))
 
 (display "Bsp tree complete")
 (newline)
@@ -82,7 +83,15 @@
                                                  (newline)
                                                  `((vertices . ,verts) (faces . ,faces))))
                                       leafs)))
+(define portals-out (list->vector (map (lambda (portal)
+                                        (receive (verts faces)
+                                                 (make-indexed-faces portal)
+                                                 (display (length (vector->list faces)))
+                                                 (newline)
+                                                 `((vertices . ,verts) (faces . ,faces))))
+                                      portals)))
 (call-with-output-file "convex.json" (lambda (port) (json-write convex-out port)))
+(call-with-output-file "portal.json" (lambda (port) (json-write portals-out port)))
 
 (display "Export complete")
 (newline)

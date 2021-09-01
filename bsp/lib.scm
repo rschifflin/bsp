@@ -13,11 +13,13 @@
                #:use-module (bsp vec3)
                #:use-module (bsp clip)
                #:use-module (bsp hash)
+               #:use-module (bsp tree)
                #:export (make-bsp-tree
                          add-bsp-portals!
                          empty-bsp-tree!
                          face->plane
-                         bsp-+leafs))
+                         bsp-+leafs
+                         bsp-+portals))
 
 ;;; Choose from a working-set a polygon-face to define the splitting plane
 (define (choose-splitting-face working-set)
@@ -55,39 +57,37 @@
 
 (define (make-bsp-tree faces)
   (define (make-bsp-tree candidate-faces applied-faces)
-    (if (null? candidate-faces) `(leaf ,applied-faces)
-      (let* ((splitting-face  (choose-splitting-face candidate-faces))
-             (splitting-plane (face->plane splitting-face))
-             (clip (lambda (face) (clip-plane-face splitting-plane face)))
-             (candidate-clips (map clip candidate-faces))
-             (applied-clips (map clip applied-faces)))
+    (if (null? candidate-faces)
+        (make-tree `(,applied-faces ())) ;; Return tree leaf with solids and (empty) portals as data
+        (let* ((splitting-face  (choose-splitting-face candidate-faces))
+               (splitting-plane (face->plane splitting-face))
+               (clip (lambda (face) (clip-plane-face splitting-plane face)))
+               (candidate-clips (map clip candidate-faces))
+               (applied-clips (map clip applied-faces)))
 
-        ;; Partition splits into +/-/=
-        (receive (+candidates -candidates =candidates)
-                 (partition-splits (zip candidate-faces candidate-clips))
-                 (receive (+applied -applied =applied)
-                          (partition-splits (zip applied-faces applied-clips))
+          ;; Partition splits into +/-/=
+          (receive (+candidates -candidates =candidates)
+                   (partition-splits (zip candidate-faces candidate-clips))
+                   (receive (+applied -applied =applied)
+                            (partition-splits (zip applied-faces applied-clips))
 
-                          ;; Planar candidates are moved to the applied set to prevent re-splitting along the same plane
-                          ;; We choose planar faces to be positive, thus making a 'right-handed' leafy bsp tree
-                          (let ((+candidate-faces +candidates)
-                                (-candidate-faces -candidates)
-                                (+applied-faces (append +applied =applied =candidates))
-                                (-applied-faces -applied))
+                            ;; Planar candidates are moved to the applied set to prevent re-splitting along the same plane
+                            ;; We choose planar faces to be positive, thus making a 'right-handed' leafy bsp tree
+                            (let ((+candidate-faces +candidates)
+                                  (-candidate-faces -candidates)
+                                  (+applied-faces (append +applied =applied =candidates))
+                                  (-applied-faces -applied))
 
-                            ;; Return tree with splitting plane, lhs negative and rhs positive
-                            `(branch
-                               ,splitting-plane
-                               ,(make-bsp-tree -candidate-faces -applied-faces)
-                               ,(make-bsp-tree +candidate-faces +applied-faces))))))))
+                              ;; Return tree branch with splitting plane data, lhs negative and rhs positive
+                              (make-tree splitting-plane
+                                         (make-bsp-tree -candidate-faces -applied-faces)
+                                         (make-bsp-tree +candidate-faces +applied-faces))))))))
   (make-bsp-tree faces '()))
 
 (define (empty-bsp-tree! tree)
-  (if (eq? (car tree) 'leaf)
-      (set-car! (cdr tree) '())
-     (begin
-       (empty-bsp-tree! (list-ref tree 2))
-       (empty-bsp-tree! (list-ref tree 3)))))
+  (if (tree-leaf? tree)
+      (tree-set-datum! tree '())
+      (for-each empty-bsp-tree! (tree-children tree))))
 
 ;; Takes a list of faces, turns them into boundary-clipped polys, then inserts them into the bsp tree in a special way
 ;; When portal polys lie coincident with a branch plane, they get sent down _both_ ends of the branch with opposite windings, as siblings!
@@ -98,30 +98,33 @@
           faces           ; List of convex polygons
           boundary)       ; dimensions which are sufficient to contain all faces
   (define (add-bsp-portal! tree face side)
-    (if (eq? (car tree) 'leaf)
-        ;; Check (cadr tree) for duplicate faces
-        ;; If none match, add this portal as the third element to tree
+    (if (tree-leaf? tree)
+        ;; Check solids list for duplicate faces
+        ;; If none match, add this portal to the portal list
 
         ;; Only care about leafy portals
         (if (eq? side 'rhs)
-            (if (not (find (lambda (other) (face~= face other)) (cadr tree)))
-                (set-car! (cdr tree) (cons face (cadr tree)))))
+            (if (not (find (lambda (other) (face~= face other))
+                           (car (tree-datum tree))))
+                (let ((new-portal-list (cons face (cadr (tree-datum tree)))))
+                  (set-cdr! (tree-datum tree) `(,new-portal-list . ())))))
 
-        (let* ((clip (clip-plane-face (cadr tree) face)))
+        ;; Else, not a leaf. Branches have splitting planes as their data
+        (let* ((clip (clip-plane-face (tree-datum tree) face)))
           ;; Planar faces are moved to BOTH sets. In the future they'll be married by a common index
-          ;; This is because these two 'matching' faces glue the convex hulls together w/ empty space
+          ;; This is because these two 'matching' faces glue two convex hulls together
           (cond [(eq? (car clip) 'clipped)
                  (begin
-                   (add-bsp-portal! (list-ref tree 3) (list-ref clip 1) 'rhs)
-                   (add-bsp-portal! (list-ref tree 2) (list-ref clip 2) 'lhs))]
+                   (add-bsp-portal! (tree-rhs tree) (list-ref clip 1) 'rhs)
+                   (add-bsp-portal! (tree-lhs tree) (list-ref clip 2) 'lhs))]
                 [(eq? (cadr clip) '+)
-                 (add-bsp-portal! (list-ref tree 3) face 'rhs)]
+                 (add-bsp-portal! (tree-rhs tree) face 'rhs)]
                 [(eq? (cadr clip) '-)
-                 (add-bsp-portal! (list-ref tree 2) face 'lhs)]
+                 (add-bsp-portal! (tree-lhs tree) face 'lhs)]
                 [(eq? (cadr clip) '=)
                  (begin
-                   (add-bsp-portal! (list-ref tree 3) face 'rhs)
-                   (add-bsp-portal! (list-ref tree 2) face 'lhs))]))))
+                   (add-bsp-portal! (tree-rhs tree) face 'rhs)
+                   (add-bsp-portal! (tree-lhs tree) face 'lhs))]))))
 
   (let* ((planes (map face->plane faces))
          (clip (lambda (plane) (clip-plane-boundary plane boundary)))
@@ -138,12 +141,23 @@
 (define (bsp-+leafs bsp-tree)
   (let self ((bsp-tree bsp-tree) (leafs '()) (side 'rhs))
     (cond [(null? bsp-tree) leafs]
-          [(and (eq? (car bsp-tree) 'leaf)
+          [(and (tree-leaf? bsp-tree)
                 (eq? side 'lhs)) leafs]
-          [(and (eq? (car bsp-tree) 'leaf)
-                (eq? side 'rhs)) (cons (cadr bsp-tree) leafs)]
-          [(eq? (car bsp-tree) 'branch)
-                (self
-                  (list-ref bsp-tree 3)
-                  (self (list-ref bsp-tree 2) leafs 'lhs)
+          [(and (tree-leaf? bsp-tree)
+                (eq? side 'rhs)) (cons (car (tree-datum bsp-tree)) leafs)]
+          [else (self
+                  (tree-rhs bsp-tree)
+                  (self (tree-lhs bsp-tree) leafs 'lhs)
+                  'rhs)])))
+
+(define (bsp-+portals bsp-tree)
+  (let self ((bsp-tree bsp-tree) (portals '()) (side 'rhs))
+    (cond [(null? bsp-tree) portals]
+          [(and (tree-leaf? bsp-tree)
+                (eq? side 'lhs)) portals]
+          [(and (tree-leaf? bsp-tree)
+                (eq? side 'rhs)) (cons (cadr (tree-datum bsp-tree)) portals)]
+          [else (self
+                  (tree-rhs bsp-tree)
+                  (self (tree-lhs bsp-tree) portals 'lhs)
                   'rhs)])))
