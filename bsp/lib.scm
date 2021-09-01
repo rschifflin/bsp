@@ -13,12 +13,11 @@
                #:use-module (bsp vec3)
                #:use-module (bsp clip)
                #:use-module (bsp hash)
+               #:use-module (bsp plist)
                #:use-module (bsp tree)
-               #:export (make-bsp-tree
+               #:export (make-bsp
                          add-bsp-portals!
-                         empty-bsp-tree!
-                         face->plane
-                         bsp-+leafs
+                         bsp-+solids
                          bsp-+portals))
 
 ;;; Choose from a working-set a polygon-face to define the splitting plane
@@ -27,11 +26,6 @@
 
 ;;; Derive a plane from the face
 ;;; Since the face is planar, sampling any 3 points is enough to define the plane.
-(define (face->plane face)
-  (let* ((p0 (list-ref face 0))
-         (p1 (list-ref face 1))
-         (p2 (list-ref face 2)))
-    (make-plane-from-points p0 p1 p2)))
 
 (define (partition-splits faces,clips)
   ;;; Returns three values, +face, -face, =face
@@ -55,10 +49,18 @@
                        (if (null? -split) -splits (cons -split -splits))
                        (if (null? =split) =splits (cons =split =splits)))))))
 
-(define (make-bsp-tree faces)
-  (define (make-bsp-tree candidate-faces applied-faces)
+;; A bsp combines a spatial lookup tree and an indexed lookup vector
+(define (make-bsp faces)
+  (define (make-bsp-tree    ;; Returns a pair of size,tree where branches represent splitplanes, and leaves hold indices into a vector of leaf data
+            candidate-faces ;; List of faces which haven't been chosen as splitplanes yet
+            applied-faces   ;; List of faces already chosen as splitplanes before
+            index           ;; Counter representing existing number of leaves
+            leaf-list)       ;; List holding leaf data in index order
     (if (null? candidate-faces)
-        (make-tree `(,applied-faces ())) ;; Return tree leaf with solids and (empty) portals as data
+        (list 'index (+ index 1)
+              'tree (make-tree index)
+              'list (cons (list 'solids applied-faces 'portals '())
+                          leaf-list))
         (let* ((splitting-face  (choose-splitting-face candidate-faces))
                (splitting-plane (face->plane splitting-face))
                (clip (lambda (face) (clip-plane-face splitting-plane face)))
@@ -73,91 +75,143 @@
 
                             ;; Planar candidates are moved to the applied set to prevent re-splitting along the same plane
                             ;; We choose planar faces to be positive, thus making a 'right-handed' leafy bsp tree
-                            (let ((+candidate-faces +candidates)
-                                  (-candidate-faces -candidates)
-                                  (+applied-faces (append +applied =applied =candidates))
-                                  (-applied-faces -applied))
+                            (let* ((+candidate-faces +candidates)
+                                   (-candidate-faces -candidates)
+                                   (+applied-faces (append +applied =applied =candidates))
+                                   (-applied-faces -applied)
+                                   (tree-lhs (make-bsp-tree -candidate-faces -applied-faces index leaf-list))
+                                   (tree-rhs (make-bsp-tree +candidate-faces +applied-faces (pget tree-lhs 'index) (pget tree-lhs 'list))))
 
-                              ;; Return tree branch with splitting plane data, lhs negative and rhs positive
-                              (make-tree splitting-plane
-                                         (make-bsp-tree -candidate-faces -applied-faces)
-                                         (make-bsp-tree +candidate-faces +applied-faces))))))))
-  (make-bsp-tree faces '()))
+                              ;; Return size.tree branch with splitting plane data, lhs negative and rhs positive
+                              (plist-put tree-rhs 'tree (make-tree splitting-plane
+                                                                   (pget tree-lhs 'tree)
+                                                                   (pget tree-rhs 'tree)))))))))
 
-(define (empty-bsp-tree! tree)
-  (if (tree-leaf? tree)
-      (tree-set-datum! tree '())
-      (for-each empty-bsp-tree! (tree-children tree))))
+  (if (null? faces)
+      '()
+      (let ((bsp-tree (make-bsp-tree faces '() 0 '())))
+        (list 'tree (pget bsp-tree 'tree)
+              'vector (list->vector (reverse (pget bsp-tree 'list)))
+              'faces faces))))
 
-;; Takes a list of faces, turns them into boundary-clipped polys, then inserts them into the bsp tree in a special way
-;; When portal polys lie coincident with a branch plane, they get sent down _both_ ends of the branch with opposite windings, as siblings!
+;; Takes the bsp, turns each unique faceplane into a boundary-clipped poly, then inserts each into the bsp tree in a special way
+;; When portal polys lie coincident with a branch plane, they get sent down _both_ ends of the branch as siblings!
 ;; When they eventually settle into their respective convex hull, they join the two sibling hulls with the notion of being connected via portal.
-;; This means the +hull can "see" the -hull and is used for visibility, collision detection, etc
-(define (add-bsp-portals!
-          tree            ; BSP-tree
-          faces           ; List of convex polygons
-          boundary)       ; dimensions which are sufficient to contain all faces
-  (define (add-bsp-portal! tree face side)
-    (if (tree-leaf? tree)
-        ;; Check solids list for duplicate faces
-        ;; If none match, add this portal to the portal list
+;; This gives a notion of adjacency; the +hull is adjacent to the -hull
 
-        ;; Only care about leafy portals
+;; A neighborhood is a list of all subdivisions of a bounds-face, with their respective index, separated into the lhs siblings and rhs siblings.
+
+;; Portal lifecycle
+;; Step 1: Get split into siblings and subdivided along a coincident splitting plane, forming a neighborhood
+;; Step 2: Further subdivide into intersections with all neighbors of the opposite side
+;; Step 3: Eliminate remaining subdivisions that are completely covered by solids
+;; Step 4: Write remaining subdivisions as portals between two neighbors
+(define (gen-neighborhood bsp-tree bounds-face)
+  (let ((lhs (tree-lhs bsp-tree))
+        (rhs (tree-rhs bsp-tree)))
+    (list 'lhs (fill-neighborhood lhs bounds-face 'lhs '())
+          'rhs (fill-neighborhood rhs bounds-face 'rhs '()))))
+
+(define (fill-neighborhood bsp-tree bounds-face side neighbors)
+  (if (tree-leaf? bsp-tree)
+      ;; If it's a leaf
+      (let* ((index (tree-datum bsp-tree)))
+        ;; Only care about 'leafy' convex spaces on the rhs
         (if (eq? side 'rhs)
-            (if (not (find (lambda (other) (face~= face other))
-                           (car (tree-datum tree))))
-                (let ((new-portal-list (cons face (cadr (tree-datum tree)))))
-                  (set-cdr! (tree-datum tree) `(,new-portal-list . ())))))
+            (cons (list 'index index 'face bounds-face) neighbors)
+            neighbors))
 
-        ;; Else, not a leaf. Branches have splitting planes as their data
-        (let* ((clip (clip-plane-face (tree-datum tree) face)))
-          ;; Planar faces are moved to BOTH sets. In the future they'll be married by a common index
-          ;; This is because these two 'matching' faces glue two convex hulls together
-          (cond [(eq? (car clip) 'clipped)
-                 (begin
-                   (add-bsp-portal! (tree-rhs tree) (list-ref clip 1) 'rhs)
-                   (add-bsp-portal! (tree-lhs tree) (list-ref clip 2) 'lhs))]
-                [(eq? (cadr clip) '+)
-                 (add-bsp-portal! (tree-rhs tree) face 'rhs)]
-                [(eq? (cadr clip) '-)
-                 (add-bsp-portal! (tree-lhs tree) face 'lhs)]
-                [(eq? (cadr clip) '=)
-                 (begin
-                   (add-bsp-portal! (tree-rhs tree) face 'rhs)
-                   (add-bsp-portal! (tree-lhs tree) face 'lhs))]))))
+      ;; Else, not a leaf. Branches have splitting planes as their data
+      (let* ((splitplane (tree-datum bsp-tree))
+             (clip (clip-plane-face splitplane bounds-face)))
+        (cond [(eq? (car clip) 'clipped)
+               (fill-neighborhood (tree-rhs bsp-tree) (list-ref clip 1) 'rhs
+                 (fill-neighborhood (tree-lhs bsp-tree) (list-ref clip 2) 'lhs neighbors))]
+              [(eq? (cadr clip) '+)
+               (fill-neighborhood (tree-rhs bsp-tree) bounds-face 'rhs neighbors)]
+              [(eq? (cadr clip) '-)
+               (fill-neighborhood (tree-lhs bsp-tree) bounds-face 'lhs neighbors)]
 
-  (let* ((planes (map face->plane faces))
-         (clip (lambda (plane) (clip-plane-boundary plane boundary)))
-         (table-len (length planes))
+              ;; If ANOTHER splitplane is present while we're already generating a neighborhood, we've broken an invariant
+              ;; Once we split by a given plane, it should never appear again as a splitplane
+              [(eq? (cadr clip) '=)
+               (error "Invariant broken: Identical splitplane found multiple times in bsp path")]))))
+
+(define (find-neighborhoods bsp-tree bounds-face neighborhoods)
+  (if (tree-leaf? bsp-tree)
+      ;; Leaves are dead-ends in the neighborhood search
+      neighborhoods
+
+      ;; Else, not a leaf. Branches have splitting planes as their data
+      (let* ((splitplane (tree-datum bsp-tree))
+             (clip (clip-plane-face splitplane bounds-face)))
+        (cond [(eq? (car clip) 'clipped)
+               (find-neighborhoods (tree-rhs bsp-tree) (list-ref clip 1)
+                 (find-neighborhoods (tree-lhs bsp-tree) (list-ref clip 2) neighborhoods))]
+              [(eq? (cadr clip) '+)
+               (find-neighborhoods (tree-rhs bsp-tree) bounds-face neighborhoods)]
+              [(eq? (cadr clip) '-)
+               (find-neighborhoods (tree-lhs bsp-tree) bounds-face neighborhoods)]
+
+              ;; Neighborhood candidate found
+              [(eq? (cadr clip) '=)
+               (cons (gen-neighborhood bsp-tree bounds-face) neighborhoods)]))))
+
+(define (add-bsp-portals!
+          bsp             ; BSP
+          boundary)       ; dimensions which are sufficient to contain all faces
+
+  (let* ((bsp-tree   (pget bsp 'tree))
+         (bsp-vector (pget bsp 'vector))
+         (faces      (pget bsp 'faces))
+         (planes (map face->plane faces))
          (hash-plane (lambda (plane size)
                        (let ((h1 (vec3-hash (plane-normal plane) size))
                              (h2 (vec3-hash (plane-normal (plane-flip plane)) size)))
                          (hash (+ h1 h2) size))))
          (unique-planes (dedup-hash planes hash-plane plane~=))
+         (clip (lambda (plane) (clip-plane-boundary plane boundary)))
          (bounds-faces (map clip unique-planes)))
-    (for-each (lambda (face) (add-bsp-portal! tree face 'rhs)) bounds-faces)))
+
+    (define (add-bsp-portal! bsp-tree face)
+      (let* ((neighborhoods (find-neighborhoods bsp-tree face '()))
+             (set-neighbor! (lambda (neighbor)
+                              (let* ((index (pget neighbor 'index))
+                                     (portal (pget neighbor 'face))
+                                     (leaf-data (vector-ref bsp-vector index))
+                                     (solids (pget leaf-data 'solids))
+                                     (portals (pget leaf-data 'portals))
+                                     (new-leaf-data (pput leaf-data 'portals (cons portal portals))))
+                                (if (not (find (lambda (other) (face~= portal other)) solids))
+                                    (vector-set! bsp-vector index new-leaf-data)))))
+             (set-neighbors! (lambda (neighborhood)
+                               (for-each set-neighbor! (pget neighborhood 'lhs))
+                               (for-each set-neighbor! (pget neighborhood 'rhs)))))
+        (for-each set-neighbors! neighborhoods)))
+    (for-each (lambda (face) (add-bsp-portal! bsp-tree face)) bounds-faces)))
 
 ;; Just the positive leafs of the bsp-tree
-(define (bsp-+leafs bsp-tree)
-  (let self ((bsp-tree bsp-tree) (leafs '()) (side 'rhs))
-    (cond [(null? bsp-tree) leafs]
-          [(and (tree-leaf? bsp-tree)
-                (eq? side 'lhs)) leafs]
-          [(and (tree-leaf? bsp-tree)
-                (eq? side 'rhs)) (cons (car (tree-datum bsp-tree)) leafs)]
-          [else (self
-                  (tree-rhs bsp-tree)
-                  (self (tree-lhs bsp-tree) leafs 'lhs)
-                  'rhs)])))
+(define (bsp-+prop bsp prop)
+  (let ((bsp-tree   (plist-get bsp 'tree))
+        (bsp-vector (plist-get bsp 'vector)))
+    (let self ((bsp-tree bsp-tree) (leafs '()) (side 'rhs))
+      (cond [(null? bsp-tree) leafs]
+            [(and (tree-leaf? bsp-tree)
+                  (eq? side 'lhs))
+             leafs]
+            [(and (tree-leaf? bsp-tree)
+                  (eq? side 'rhs))
+             (let* ((index (tree-datum bsp-tree))
+                    (leaf (vector-ref bsp-vector index)))
+               (cons (plist-ref leaf prop)
+                     leafs))]
+            [else (self
+                    (tree-rhs bsp-tree)
+                    (self (tree-lhs bsp-tree) leafs 'lhs)
+                    'rhs)]))))
 
-(define (bsp-+portals bsp-tree)
-  (let self ((bsp-tree bsp-tree) (portals '()) (side 'rhs))
-    (cond [(null? bsp-tree) portals]
-          [(and (tree-leaf? bsp-tree)
-                (eq? side 'lhs)) portals]
-          [(and (tree-leaf? bsp-tree)
-                (eq? side 'rhs)) (cons (cadr (tree-datum bsp-tree)) portals)]
-          [else (self
-                  (tree-rhs bsp-tree)
-                  (self (tree-lhs bsp-tree) portals 'lhs)
-                  'rhs)])))
+(define (bsp-+solids bsp)
+  (bsp-+prop bsp 'solids))
+
+(define (bsp-+portals bsp)
+  (bsp-+prop bsp 'portals))

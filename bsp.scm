@@ -33,11 +33,11 @@
 (display "Starting tree-ify")
 (newline)
 
-(define tree (make-bsp-tree faces))
+(define bsp (make-bsp faces))
 (define boundary (make-boundary 20.0))
-(add-bsp-portals! tree faces boundary)
-(define leafs (bsp-+leafs tree))
-(define portals (bsp-+portals tree))
+(add-bsp-portals! bsp boundary)
+(define leafs (bsp-+solids bsp))
+(define portals (bsp-+portals bsp))
 
 (display "Bsp tree complete")
 (newline)

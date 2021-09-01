@@ -5,6 +5,9 @@
                          plist-get
                          plist-put
                          plist-merge
+
+                         pget
+                         pput
                          ))
 
 ;; Predicate for determining if a list is a plist
@@ -24,6 +27,8 @@
       (if (eq? (car lst) sym)
           (cadr lst)
           (plist-ref (cddr lst) sym))))
+(define plist-get plist-ref)
+(define pget plist-get)
 
 ;; Insert or replace by symbol
 (define (plist-put lst sym val)
@@ -32,6 +37,7 @@
       (if (eq? (car lst) sym)
           (cons sym (cons val (cddr lst)))
           (cons (car lst) (cons (cadr lst) (plist-put (cddr lst) sym val))))))
+(define pput plist-put)
 
 ;; Modifies target-alist to contain the keys from replacement-alist
 (define (plist-merge old-plist new-plist)

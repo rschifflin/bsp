@@ -3,13 +3,15 @@
 (define-module (bsp face)
                #:use-module (srfi srfi-1)
                #:use-module (bsp vec3)
+               #:use-module (bsp plane)
                #:export (make-face
                           face=
                           face~=
                           face-builder
                           face-builder-add-point
                           face-builder-add-points
-                          build-face))
+                          build-face
+                          face->plane))
 
 (define make-face identity)
 (define face-builder '())
@@ -35,3 +37,8 @@
                  [else (self (cdr lst0) (cdr lst1))])))))
 
 (define build-face reverse)
+(define (face->plane face)
+  (let* ((p0 (list-ref face 0))
+         (p1 (list-ref face 1))
+         (p2 (list-ref face 2)))
+    (make-plane-from-points p0 p1 p2)))

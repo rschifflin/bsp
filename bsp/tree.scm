@@ -2,6 +2,7 @@
                #:export (make-tree
                          tree-datum
                          tree-children
+                         tree-set-datum!
                          tree-lhs
                          tree-rhs
                          tree-leaf?))
