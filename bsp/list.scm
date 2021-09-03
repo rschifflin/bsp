@@ -1,11 +1,16 @@
 (define-module (bsp list)
                #:use-module (srfi srfi-1)
                #:use-module (bsp fn)
-               #:export (all? dedup dedup-hash))
+               #:export (all? any? dedup dedup-hash))
 (define (all? pred lst)
   (cond [(null? lst) #t]
         [(not (pred (car lst))) #f]
         [else (all? pred (cdr lst))]))
+
+(define (any? pred lst)
+  (cond [(null? lst) #f]
+        [(pred (car lst)) #t]
+        [else (any? pred (cdr lst))]))
 
 ;;; Given a list of items and a fn to cmp items
 ;;; cmp takes two items to compare for equality

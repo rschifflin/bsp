@@ -10,6 +10,9 @@
                          plane-cmp-point
                          plane-cmp-line
                          plane-test-face
+                         plane-test-intersects?
+                         plane-test-sign
+                         plane-test-signs
                          plane-line-intersection
                          plane-flip
                          plane->u8vector
@@ -47,9 +50,7 @@
   (let ((point (plane-point p))
         (normal (plane-normal p)))
     (make-plane point
-                (make-vec3 (- (@x normal))
-                           (- (@y normal))
-                           (- (@z normal))))))
+                (v3:neg normal))))
 
 ;;; True if two planes are equal
 (define (plane= p1 p2)
@@ -107,6 +108,9 @@
             [(all? (lambda (sign) (or (eq? sign '=) (eq? sign '-))) signs)
              '(#f -)]
             [else `(#t ,signs)])))
+(define plane-test-intersects? car)
+(define plane-test-sign cadr)
+(define plane-test-signs cadr)
 
 ;;; Given a line that definitely intersects the plane,
 ;;; return the point of intersection.

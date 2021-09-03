@@ -11,6 +11,7 @@
                          v3:ord
                          v3:sum
                          v3:sub
+                         v3:neg
                          v3:scale
                          v3:cross
                          v3:dot
@@ -67,6 +68,11 @@
   (and (~= (@x v0) (@x v1))
        (~= (@y v0) (@y v1))
        (~= (@z v0) (@z v1))))
+
+(define (v3:neg v)
+  (make-vec3 (- (@x v))
+             (- (@y v))
+             (- (@z v))))
 
 (define (v3:< v0 v1)
   (if (= (@x v0) (@x v1))

@@ -26,18 +26,17 @@
 
 ;;; Derive a plane from the face
 ;;; Since the face is planar, sampling any 3 points is enough to define the plane.
-
 (define (partition-splits faces,clips)
   ;;; Returns three values, +face, -face, =face
   (define (partition-split face,clip)
     (let ((face (car face,clip))
           (clip (cadr face,clip)))
 
-      (cond [(eq? 'clipped (car clip)) (values (list-ref clip 1) (list-ref clip 2) '())]
+      (cond [(clip-clipped? clip) (values (clip-+face clip) (clip--face clip) '())]
             ;; Otherwise unclipped
-            [(eq? '+ (list-ref clip 1)) (values face '() '())]
-            [(eq? '- (list-ref clip 1)) (values '() face '())]
-            [(eq? '= (list-ref clip 1)) (values '() '() face)])))
+            [(eq? '+ (clip-sign clip)) (values face '() '())]
+            [(eq? '- (clip-sign clip)) (values '() face '())]
+            [(eq? '= (clip-sign clip)) (values '() '() face)])))
 
   (let self ((faces,clips faces,clips) (+splits '()) (-splits '()) (=splits '()))
     (if (null? faces,clips)
@@ -124,17 +123,17 @@
       ;; Else, not a leaf. Branches have splitting planes as their data
       (let* ((splitplane (tree-datum bsp-tree))
              (clip (clip-plane-face splitplane bounds-face)))
-        (cond [(eq? (car clip) 'clipped)
-               (fill-neighborhood (tree-rhs bsp-tree) (list-ref clip 1) 'rhs
-                 (fill-neighborhood (tree-lhs bsp-tree) (list-ref clip 2) 'lhs neighbors))]
-              [(eq? (cadr clip) '+)
+        (cond [(clip-clipped? clip)
+               (fill-neighborhood (tree-rhs bsp-tree) (clip-+face clip) 'rhs
+                 (fill-neighborhood (tree-lhs bsp-tree) (clip--face clip) 'lhs neighbors))]
+              [(eq? (clip-sign clip) '+)
                (fill-neighborhood (tree-rhs bsp-tree) bounds-face 'rhs neighbors)]
-              [(eq? (cadr clip) '-)
+              [(eq? (clip-sign clip) '-)
                (fill-neighborhood (tree-lhs bsp-tree) bounds-face 'lhs neighbors)]
 
               ;; If ANOTHER splitplane is present while we're already generating a neighborhood, we've broken an invariant
               ;; Once we split by a given plane, it should never appear again as a splitplane
-              [(eq? (cadr clip) '=)
+              [(eq? (clip-sign clip) '=)
                (error "Invariant broken: Identical splitplane found multiple times in bsp path")]))))
 
 (define (find-neighborhoods bsp-tree bounds-face neighborhoods)
@@ -145,16 +144,16 @@
       ;; Else, not a leaf. Branches have splitting planes as their data
       (let* ((splitplane (tree-datum bsp-tree))
              (clip (clip-plane-face splitplane bounds-face)))
-        (cond [(eq? (car clip) 'clipped)
-               (find-neighborhoods (tree-rhs bsp-tree) (list-ref clip 1)
-                 (find-neighborhoods (tree-lhs bsp-tree) (list-ref clip 2) neighborhoods))]
-              [(eq? (cadr clip) '+)
+        (cond [(clip-clipped? clip)
+               (find-neighborhoods (tree-rhs bsp-tree) (clip-+face clip)
+                 (find-neighborhoods (tree-lhs bsp-tree) (clip--face clip) neighborhoods))]
+              [(eq? (clip-sign clip) '+)
                (find-neighborhoods (tree-rhs bsp-tree) bounds-face neighborhoods)]
-              [(eq? (cadr clip) '-)
+              [(eq? (clip-sign clip) '-)
                (find-neighborhoods (tree-lhs bsp-tree) bounds-face neighborhoods)]
 
               ;; Neighborhood candidate found
-              [(eq? (cadr clip) '=)
+              [(eq? (clip-sign clip) '=)
                (cons (gen-neighborhood bsp-tree bounds-face) neighborhoods)]))))
 
 (define (add-bsp-portals!
@@ -170,7 +169,10 @@
                              (h2 (vec3-hash (plane-normal (plane-flip plane)) size)))
                          (hash (+ h1 h2) size))))
          (unique-planes (dedup-hash planes hash-plane plane~=))
-         (clip (lambda (plane) (clip-plane-boundary plane boundary)))
+         (clip (lambda (plane) (or (clip-plane-boundary plane boundary)
+                                   (error "Could not clip plane to boundary."
+                                          "Plane: " plane
+                                          "Boundary: " boundary))))
          (bounds-faces (map clip unique-planes)))
 
     (define (add-bsp-portal! bsp-tree face)

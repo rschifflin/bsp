@@ -13,10 +13,16 @@
                #:use-module (bsp mat3)
                #:export (clip-plane-boundary
                          clip-plane-face
+                         clip-clipped?
+                         clip-+face
+                         clip--face
+                         clip-sign
+                         clip-intersections
                          sort-convex-points))
 
 (define PI (* 4 (atan 1)))
 
+;; TODO: Move this into libface
 ;; points are a list of points on the convex hull of some polygon
 ;; basis-z is the unit normal for the face of the convex poly
 ;; Returns false unless 3+ points are given
@@ -79,13 +85,31 @@
     (and sorted-points
          (make-face sorted-points))))
 
+
+(define (clip-clipped? clip)
+  (eq? 'clipped (car clip)))
+
+;; Only clipped have a +face, -face, and intersections
+(define (clip-+face clip)
+  (list-ref clip 1))
+
+(define (clip--face clip)
+  (list-ref clip 2))
+
+(define (clip-intersections clip)
+  (list-ref clip 3))
+
+;; Only unclipped have a sign
+(define (clip-sign clip)
+  (list-ref clip 1))
+
+;;; TODO: Add parametric clip points to allow follow-up clipping of UV coordinates
 ;;; Clip a face by a plane
-;;; Returns ADT, one of:
+;;; Returns clip ADT, one of:
 ;;;   ('clipped +face -face)
 ;;;   ('unclipped <+|-|=>)
 (define (clip-plane-face plane face)
-  (let* ((test-result (plane-test-face plane face))
-         (needs-clip? (car test-result)))
+  (let ((test (plane-test-face plane face)))
 
     ;; clip props are a plist
     ;; '+face face-builder '-face face-builder 'prev (point sign)
@@ -94,6 +118,7 @@
             (-face (plist-ref props '-face))
             (prev-point (car (plist-ref props 'prev)))
             (prev-sign (cadr (plist-ref props 'prev)))
+            (intersections (plist-ref props 'intersections))
             (point (car point,sign))
             (sign (cadr point,sign)))
 
@@ -131,7 +156,9 @@
                   (plist-merge props (list
                                        '+face +face
                                        '-face -face
-                                       'prev  point,sign)))])))
+                                       'prev  point,sign
+                                       'intersections (cons intersection intersections)
+                                       )))])))
 
     (define (clip signs)
       (let* ((face+signs (zip face signs))
@@ -139,12 +166,14 @@
              (ptail (cdr face+signs))
              (props (list '+face face-builder
                           '-face face-builder
-                          'prev p0))
+                          'prev p0
+                          'intersections '()))
              (props (clip-point p0 (fold clip-point props ptail)))
              (+face (build-face (plist-ref props '+face)))
-             (-face (build-face (plist-ref props '-face))))
-          `(,+face ,-face)))
+             (-face (build-face (plist-ref props '-face)))
+             (intersections (plist-ref props 'intersections)))
+          `(,+face ,-face ,intersections)))
 
-    (if needs-clip?
-      `(clipped . ,(clip (cadr test-result)))
-      `(unclipped ,(cadr test-result)))))
+    (if (plane-test-intersects? test)
+      `(clipped . ,(clip (plane-test-sign test)))
+      `(unclipped ,(plane-test-signs test)))))
