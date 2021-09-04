@@ -30,6 +30,34 @@
 (display "Import complete.")
 (newline)
 
+(display "Sanitizing faces...")
+(newline)
+
+;; TODO: Hacky. Do this properly in a make-face constructor. Doesn't account for future face features like UV coords
+(define (sanitize-face face)
+  (define (sanitize-edges edges v0)
+    (if (null? edges) '()
+        (let* ((endpoints (car edges))
+               (p0 (car endpoints))
+               (p1 (cadr endpoints))
+               (v1 (v3:sub p1 p0)))
+          (cond [(v3:~= p0 p1)
+                 (sanitize-edges (cdr edges) v0)]
+                [(and v0 (= 0 (v3:length (v3:cross v0 v1))))
+                 (sanitize-edges (cdr edges) v0)]
+                [else
+                  (cons p0 (sanitize-edges (cdr edges) v1))]
+                ))))
+  (let* ((edges (zip (cons (last face) face) face))
+         (sanitized (sanitize-edges edges #f)))
+    (if (< (length sanitized) 3)
+        (error "could not save face: " face)
+        sanitized)))
+
+
+(define faces (map sanitize-face faces))
+
+
 (display "Starting tree-ify")
 (newline)
 

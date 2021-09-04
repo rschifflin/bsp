@@ -128,7 +128,8 @@
                  (plist-merge props (list
                                       '+face +face
                                       '-face -face
-                                      'prev  point,sign)))]
+                                      'prev point,sign
+                                      'intersections  (cons point intersections))))]
 
               [(and (eq? sign '+)
                     (not (eq? prev-sign '-))) ; Positive non-intersecting case; add idx to positive face

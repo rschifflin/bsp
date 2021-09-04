@@ -1,7 +1,12 @@
 (define-module (bsp list)
                #:use-module (srfi srfi-1)
                #:use-module (bsp fn)
-               #:export (all? any? dedup dedup-hash))
+               #:export (all?
+                          any?
+                          dedup
+                          dedup-hash
+                          flat-map
+                          runs))
 (define (all? pred lst)
   (cond [(null? lst) #t]
         [(not (pred (car lst))) #f]
@@ -22,6 +27,20 @@
          (dedup (cdr lst) cmp)]
         [else (cons (car lst) (dedup (cdr lst) cmp))]))
 
+;; Return a list of runs, consecutive elements where each element subsequently satifies the predicate
+;; compared with the previous element.
+;; Once a subsequent element does not satisfy the predicate, it becomes the first element in a new run
+;; Ie (runs = '(0 1 1 1 2 3 3 4 4 4)) => '((0) (1 1 1) (2) (3 3) (4 4 4))
+(define (runs pred lst)
+  (if (null? lst)
+      '()
+      (let self ((lst (cdr lst)) (current-run `(,(car lst))) (runs '()))
+        (if (null? lst)
+            (reverse (cons (reverse current-run) runs))
+            (if (pred (car lst) (car current-run))
+                (self (cdr lst) (cons (car lst) current-run) runs)
+                (self (cdr lst) `(,(car lst)) (cons current-run runs)))))))
+
 ;;; Given a list of items, a fn to hash items to indices, and a fn to cmp items
 ;;; hsh takes key, tablesize
 ;;; cmp takes two items to compare for equality
@@ -33,3 +52,7 @@
     (for-each (lambda (elt)
                 (hashx-set! hsh search table elt elt)) lst)
     (hash-map->list first-arg table)))
+
+(define (flat-map f lst)
+  (define (prepend x y) (append y x))
+  (fold prepend '() (map f lst)))

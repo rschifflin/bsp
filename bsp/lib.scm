@@ -67,6 +67,12 @@
                (applied-clips (map clip applied-faces)))
 
           ;; Partition splits into +/-/=
+          (display "Plane chosen: ")
+          (display splitting-plane)
+          (newline)
+          (display "Face: ")
+          (display splitting-face)
+          (newline)
           (receive (+candidates -candidates =candidates)
                    (partition-splits (zip candidate-faces candidate-clips))
                    (receive (+applied -applied =applied)
@@ -131,7 +137,7 @@
               [(eq? (clip-sign clip) '-)
                (fill-neighborhood (tree-lhs bsp-tree) bounds-face 'lhs neighbors)]
 
-              ;; If ANOTHER splitplane is present while we're already generating a neighborhood, we've broken an invariant
+              ;; If ANOTHER coincident splitplane is present while we're already generating a neighborhood, we've broken an invariant
               ;; Once we split by a given plane, it should never appear again as a splitplane
               [(eq? (clip-sign clip) '=)
                (error "Invariant broken: Identical splitplane found multiple times in bsp path")]))))
@@ -156,6 +162,40 @@
               [(eq? (clip-sign clip) '=)
                (cons (gen-neighborhood bsp-tree bounds-face) neighborhoods)]))))
 
+;; Return a list of paired neighbors
+;; TODO: Currently n^2 in complexity as every lhs node checks every rhs node
+;; Can be sped up by sorting faces along an abritrary planar axis, and have every lhs node binary-search rhs nodes
+(define (neighborhood-pair-neighbors neighborhood pairings)
+  ;; Returns a neighbor-pair or #f if the two aren't neighbors
+  (define (make-neighbor-pair left-neighbor right-neighbor)
+    (let* ((left-index (pget left-neighbor 'index))
+           (left-face (pget left-neighbor 'face))
+           (right-index (pget right-neighbor 'index))
+           (right-face (pget right-neighbor 'face))
+           (intersection (face:intersection left-face right-face)))
+      (and intersection
+           (list 'indices `(,left-index ,right-index)
+                 'face    intersection))))
+
+  (define (pairs-for-neighbor neighbor partners pairings)
+    (if (null? partners)
+        pairings
+        (let* ((partner (car partners))
+               (neighbor-pair (make-neighbor-pair neighbor partner)))
+          (if neighbor-pair
+              (pairs-for-neighbor neighbor (cdr partners) (cons neighbor-pair pairings))
+              (pairs-for-neighbor neighbor (cdr partners) pairings)))))
+
+  (let ((lhs (pget neighborhood 'lhs))
+        (rhs (pget neighborhood 'rhs)))
+    (if (or (null? lhs)
+            (null? rhs))
+        pairings
+        (fold (lambda (left-neighbor pairings)
+                (pairs-for-neighbor left-neighbor rhs pairings))
+              '()
+              lhs))))
+
 (define (add-bsp-portals!
           bsp             ; BSP
           boundary)       ; dimensions which are sufficient to contain all faces
@@ -177,19 +217,59 @@
 
     (define (add-bsp-portal! bsp-tree face)
       (let* ((neighborhoods (find-neighborhoods bsp-tree face '()))
-             (set-neighbor! (lambda (neighbor)
-                              (let* ((index (pget neighbor 'index))
-                                     (portal (pget neighbor 'face))
-                                     (leaf-data (vector-ref bsp-vector index))
-                                     (solids (pget leaf-data 'solids))
-                                     (portals (pget leaf-data 'portals))
-                                     (new-leaf-data (pput leaf-data 'portals (cons portal portals))))
-                                (if (not (find (lambda (other) (face~= portal other)) solids))
-                                    (vector-set! bsp-vector index new-leaf-data)))))
-             (set-neighbors! (lambda (neighborhood)
-                               (for-each set-neighbor! (pget neighborhood 'lhs))
-                               (for-each set-neighbor! (pget neighborhood 'rhs)))))
-        (for-each set-neighbors! neighborhoods)))
+             (neighbor-pairings (fold neighborhood-pair-neighbors '() neighborhoods))
+             (pairing-lhs-index (lambda (pairing) (first (pget pairing 'indices))))
+             (pairing-rhs-index (lambda (pairing) (second (pget pairing 'indices)))))
+
+        ;; Given the list of neighbor pairings, and index fns to choose
+        ;; which side to write to and which side to connect to,
+        ;; - Groups up all the neighbors by their leaf index.
+        ;; - For each group of neighbors that share a leaf index...
+        ;; -- Calculates the set of non-overlapping solids that might cover the portal
+        ;; -- Iterates through each neighbor, writing the portal to the leaf unless blocked by the covering set
+        (define (set-neighbors! pairings index-fn dest-fn)
+          (let* ((sorted (sort neighbor-pairings (lambda (pairing other)
+                                  (< (index-fn pairing)
+                                     (index-fn other)))))
+                  (index-runs (runs (lambda (pairing other)
+                                      (= (index-fn pairing)
+                                         (index-fn other))) sorted)))
+
+             (for-each (lambda (run) ;; Each run is guaranteed to be non-empty
+                         (let* ((leaf-index (index-fn (car run)))
+                                (leaf-data (vector-ref bsp-vector leaf-index))
+                                (plane (face->plane face))
+                                (covering-set (pget leaf-data 'solids))
+                                (covering-set (filter (lambda (solid) (plane~= plane (face->plane solid)))
+                                                      covering-set))
+                                (covering-set (face:carve-all covering-set)))
+                           (for-each (lambda (pairing)
+                                       (let* ((dest-index (dest-fn pairing))
+                                              (portal (pget pairing 'face))
+                                              (portal-area (face:area portal))
+                                              (portal-covering-set (filter-map (lambda (face)
+                                                                                 (face:intersection portal face))
+                                                                               covering-set))
+                                              (covering-area (apply + (map face:area portal-covering-set)))
+                                              (portals (pget leaf-data 'portals))
+                                              (new-leaf-data (pput leaf-data 'portals (cons portal portals))))
+                                         (if (> portal-area covering-area)
+                                             ;; TODO: Also set destination here
+                                             (begin
+                                               (display "Established neighbors: ")
+                                               (display leaf-index)
+                                               (display " -> ")
+                                               (display dest-index)
+                                               (newline)
+                                               (vector-set! bsp-vector leaf-index new-leaf-data)))))
+                                     run)))
+                       index-runs)))
+
+        ;; Write the lhs portals, pointing to the rhs neighbors
+        (set-neighbors! neighbor-pairings pairing-lhs-index pairing-rhs-index)
+
+        ;; Write the rhs portals, pointing to the lhs neighbors
+        (set-neighbors! neighbor-pairings pairing-rhs-index pairing-lhs-index)))
     (for-each (lambda (face) (add-bsp-portal! bsp-tree face)) bounds-faces)))
 
 ;; Just the positive leafs of the bsp-tree
