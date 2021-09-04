@@ -17,6 +17,8 @@
                #:use-module (bsp tree)
                #:export (make-bsp
                          add-bsp-portals!
+                         bsp-solids
+                         bsp-portals
                          bsp-+solids
                          bsp-+portals))
 
@@ -26,27 +28,34 @@
 
 ;;; Derive a plane from the face
 ;;; Since the face is planar, sampling any 3 points is enough to define the plane.
-(define (partition-splits faces,clips)
-  ;;; Returns three values, +face, -face, =face
+(define (partition-splits splitting-plane faces,clips)
+
+  ;;; Returns four values, +face, -face, +=face, -=face
+  ;;; += and -= indicate the face is planar, but aligned with the plane normal in +=, and opposite in -=
   (define (partition-split face,clip)
     (let ((face (car face,clip))
           (clip (cadr face,clip)))
-
-      (cond [(clip-clipped? clip) (values (clip-+face clip) (clip--face clip) '())]
+      (cond [(clip-clipped? clip) (values (clip-+face clip) (clip--face clip) #f #f)]
             ;; Otherwise unclipped
-            [(eq? '+ (clip-sign clip)) (values face '() '())]
-            [(eq? '- (clip-sign clip)) (values '() face '())]
-            [(eq? '= (clip-sign clip)) (values '() '() face)])))
+            [(eq? '+ (clip-sign clip)) (values face #f #f #f)]
+            [(eq? '- (clip-sign clip)) (values #f face #f #f)]
+            [(eq? '= (clip-sign clip))
+             ;; Determine +/- value based on normal alignment
+             (if (> (v3:dot (plane-normal splitting-plane) (plane-normal (face->plane face)))
+                    0)
+                 (values #f #f face #f)
+                 (values #f #f #f face))])))
 
-  (let self ((faces,clips faces,clips) (+splits '()) (-splits '()) (=splits '()))
+  (let self ((faces,clips faces,clips) (+splits '()) (-splits '()) (+=splits '()) (-=splits '()))
     (if (null? faces,clips)
-        (values +splits -splits =splits)
-        (receive (+split -split =split)
+        (values +splits -splits +=splits -=splits)
+        (receive (+split -split +=split -=split)
                  (partition-split (car faces,clips))
                  (self (cdr faces,clips)
-                       (if (null? +split) +splits (cons +split +splits))
-                       (if (null? -split) -splits (cons -split -splits))
-                       (if (null? =split) =splits (cons =split =splits)))))))
+                       (if +split (cons +split +splits) +splits)
+                       (if -split (cons -split -splits) -splits)
+                       (if +=split (cons +=split +=splits) +=splits)
+                       (if -=split (cons -=split -=splits) -=splits))))))
 
 ;; A bsp combines a spatial lookup tree and an indexed lookup vector
 (define (make-bsp faces)
@@ -66,24 +75,19 @@
                (candidate-clips (map clip candidate-faces))
                (applied-clips (map clip applied-faces)))
 
-          ;; Partition splits into +/-/=
-          (display "Plane chosen: ")
-          (display splitting-plane)
-          (newline)
-          (display "Face: ")
-          (display splitting-face)
-          (newline)
-          (receive (+candidates -candidates =candidates)
-                   (partition-splits (zip candidate-faces candidate-clips))
-                   (receive (+applied -applied =applied)
-                            (partition-splits (zip applied-faces applied-clips))
-
+          ;; Partition splits into +/-
+          (receive (+candidates -candidates +=candidates -=candidates)
+                   (partition-splits splitting-plane (zip candidate-faces candidate-clips))
+                   (receive (+applied -applied +=applied -=applied)
+                            (partition-splits splitting-plane (zip applied-faces applied-clips))
                             ;; Planar candidates are moved to the applied set to prevent re-splitting along the same plane
-                            ;; We choose planar faces to be positive, thus making a 'right-handed' leafy bsp tree
+                            ;; Planar faces that share the splitting normal are pushed right
+                            ;; Planar faces with opposite normals are pushed left
+                            ;; thus making a 'right-handed' leafy bsp tree
                             (let* ((+candidate-faces +candidates)
                                    (-candidate-faces -candidates)
-                                   (+applied-faces (append +applied =applied =candidates))
-                                   (-applied-faces -applied)
+                                   (+applied-faces (append +applied +=applied +=candidates))
+                                   (-applied-faces (append -applied -=applied -=candidates))
                                    (tree-lhs (make-bsp-tree -candidate-faces -applied-faces index leaf-list))
                                    (tree-rhs (make-bsp-tree +candidate-faces +applied-faces (pget tree-lhs 'index) (pget tree-lhs 'list))))
 
@@ -292,8 +296,30 @@
                     (self (tree-lhs bsp-tree) leafs 'lhs)
                     'rhs)]))))
 
+;; All leafs of the bsp-tree
+(define (bsp-prop bsp prop)
+  (let ((bsp-tree   (plist-get bsp 'tree))
+        (bsp-vector (plist-get bsp 'vector)))
+    (let self ((bsp-tree bsp-tree) (leafs '()))
+      (cond [(null? bsp-tree) leafs]
+            [(tree-leaf? bsp-tree)
+             (let* ((index (tree-datum bsp-tree))
+                    (leaf (vector-ref bsp-vector index)))
+               (cons (plist-ref leaf prop)
+                     leafs))]
+            [else (self
+                    (tree-rhs bsp-tree)
+                    (self (tree-lhs bsp-tree) leafs))]))))
+
+
 (define (bsp-+solids bsp)
   (bsp-+prop bsp 'solids))
 
 (define (bsp-+portals bsp)
   (bsp-+prop bsp 'portals))
+
+(define (bsp-solids bsp)
+  (bsp-prop bsp 'solids))
+
+(define (bsp-portals bsp)
+  (bsp-prop bsp 'portals))

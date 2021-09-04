@@ -10,10 +10,11 @@
   (bsp lib))
 
 (define json-in (call-with-input-file "concave.json" json-read))
+(define (println x)
+  (display x) (newline))
 
 ;; Convert vertices/faces to fat face list
-(display "Starting import...")
-(newline)
+(println "Starting import...")
 
 (define poly (vector-ref json-in 0))
 (define faces (vector->list
@@ -27,11 +28,9 @@
                                                         face)))
                             (aref poly 'faces))))
 
-(display "Import complete.")
-(newline)
+(println "Import complete.")
 
-(display "Sanitizing faces...")
-(newline)
+(println "Sanitizing faces...")
 
 ;; TODO: Hacky. Do this properly in a make-face constructor. Doesn't account for future face features like UV coords
 (define (sanitize-face face)
@@ -58,17 +57,15 @@
 (define faces (map sanitize-face faces))
 
 
-(display "Starting tree-ify")
-(newline)
+(println "Starting tree-ify")
 
 (define bsp (make-bsp faces))
 (define boundary (make-boundary 20.0))
 (add-bsp-portals! bsp boundary)
-(define leafs (bsp-+solids bsp))
-(define portals (bsp-+portals bsp))
+(define leafs (bsp-solids bsp))
+(define portals (bsp-portals bsp))
 
-(display "Bsp tree complete")
-(newline)
+(println "Bsp tree complete")
 
 (define (make-indexed-faces leaf)
   (define (make-indexed-face len.verts face)
@@ -101,25 +98,29 @@
                  (make-indexed-face len.verts (car leaf))
                  (self (cdr leaf) new-len.verts (cons face faces))))))
 
-(display "Starting export...")
-(newline)
+(println "Starting export...")
 
-(define convex-out (list->vector (map (lambda (leaf)
+
+(println "Solids...")
+(define convex-out (list->vector (filter-map (lambda (leaf)
                                         (receive (verts faces)
                                                  (make-indexed-faces leaf)
-                                                 (display (length (vector->list faces)))
-                                                 (newline)
-                                                 `((vertices . ,verts) (faces . ,faces))))
+                                                 (if (positive? (vector-length faces))
+                                                     (println (vector-length faces)))
+                                                 (and (positive? (vector-length faces))
+                                                      `((vertices . ,verts) (faces . ,faces)))))
                                       leafs)))
-(define portals-out (list->vector (map (lambda (portal)
+
+(println "Portals...")
+(define portals-out (list->vector (filter-map (lambda (portal)
                                         (receive (verts faces)
                                                  (make-indexed-faces portal)
-                                                 (display (length (vector->list faces)))
-                                                 (newline)
-                                                 `((vertices . ,verts) (faces . ,faces))))
+                                                 (if (positive? (vector-length faces))
+                                                     (println (vector-length faces)))
+                                                 (and (positive? (vector-length faces))
+                                                      `((vertices . ,verts) (faces . ,faces)))))
                                       portals)))
 (call-with-output-file "convex.json" (lambda (port) (json-write convex-out port)))
 (call-with-output-file "portal.json" (lambda (port) (json-write portals-out port)))
 
-(display "Export complete")
-(newline)
+(println "Export complete")
