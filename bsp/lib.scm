@@ -17,6 +17,8 @@
                #:use-module (bsp tree)
                #:export (make-bsp
                          add-bsp-portals!
+                         mark-inside!
+                         bsp-leafs
                          bsp-solids
                          bsp-portals
                          bsp-+solids
@@ -118,28 +120,25 @@
 (define (gen-neighborhood bsp-tree bounds-face)
   (let ((lhs (tree-lhs bsp-tree))
         (rhs (tree-rhs bsp-tree)))
-    (list 'lhs (fill-neighborhood lhs bounds-face 'lhs '())
-          'rhs (fill-neighborhood rhs bounds-face 'rhs '()))))
+    (list 'lhs (fill-neighborhood lhs bounds-face '())
+          'rhs (fill-neighborhood rhs bounds-face '()))))
 
-(define (fill-neighborhood bsp-tree bounds-face side neighbors)
+(define (fill-neighborhood bsp-tree bounds-face neighbors)
   (if (tree-leaf? bsp-tree)
       ;; If it's a leaf
       (let* ((index (tree-datum bsp-tree)))
-        ;; Only care about 'leafy' convex spaces on the rhs
-        (if (eq? side 'rhs)
-            (cons (list 'index index 'face bounds-face) neighbors)
-            neighbors))
+        (cons (list 'index index 'face bounds-face) neighbors))
 
       ;; Else, not a leaf. Branches have splitting planes as their data
       (let* ((splitplane (tree-datum bsp-tree))
              (clip (clip-plane-face splitplane bounds-face)))
         (cond [(clip-clipped? clip)
-               (fill-neighborhood (tree-rhs bsp-tree) (clip-+face clip) 'rhs
-                 (fill-neighborhood (tree-lhs bsp-tree) (clip--face clip) 'lhs neighbors))]
+               (fill-neighborhood (tree-rhs bsp-tree) (clip-+face clip)
+                 (fill-neighborhood (tree-lhs bsp-tree) (clip--face clip) neighbors))]
               [(eq? (clip-sign clip) '+)
-               (fill-neighborhood (tree-rhs bsp-tree) bounds-face 'rhs neighbors)]
+               (fill-neighborhood (tree-rhs bsp-tree) bounds-face neighbors)]
               [(eq? (clip-sign clip) '-)
-               (fill-neighborhood (tree-lhs bsp-tree) bounds-face 'lhs neighbors)]
+               (fill-neighborhood (tree-lhs bsp-tree) bounds-face neighbors)]
 
               ;; If ANOTHER coincident splitplane is present while we're already generating a neighborhood, we've broken an invariant
               ;; Once we split by a given plane, it should never appear again as a splitplane
@@ -164,7 +163,8 @@
 
               ;; Neighborhood candidate found
               [(eq? (clip-sign clip) '=)
-               (cons (gen-neighborhood bsp-tree bounds-face) neighborhoods)]))))
+               (let ((neighborhood (gen-neighborhood bsp-tree bounds-face)))
+                 (cons neighborhood neighborhoods))]))))
 
 ;; Return a list of paired neighbors
 ;; TODO: Currently n^2 in complexity as every lhs node checks every rhs node
@@ -197,8 +197,9 @@
         pairings
         (fold (lambda (left-neighbor pairings)
                 (pairs-for-neighbor left-neighbor rhs pairings))
-              '()
-              lhs))))
+              pairings
+              lhs))
+    ))
 
 (define (add-bsp-portals!
           bsp             ; BSP
@@ -232,42 +233,37 @@
         ;; -- Calculates the set of non-overlapping solids that might cover the portal
         ;; -- Iterates through each neighbor, writing the portal to the leaf unless blocked by the covering set
         (define (set-neighbors! pairings index-fn dest-fn)
-          (let* ((sorted (sort neighbor-pairings (lambda (pairing other)
-                                  (< (index-fn pairing)
-                                     (index-fn other)))))
-                  (index-runs (runs (lambda (pairing other)
-                                      (= (index-fn pairing)
-                                         (index-fn other))) sorted)))
-
-             (for-each (lambda (run) ;; Each run is guaranteed to be non-empty
-                         (let* ((leaf-index (index-fn (car run)))
-                                (leaf-data (vector-ref bsp-vector leaf-index))
-                                (plane (face->plane face))
-                                (covering-set (pget leaf-data 'solids))
-                                (covering-set (filter (lambda (solid) (plane~= plane (face->plane solid)))
-                                                      covering-set))
-                                (covering-set (face:carve-all covering-set)))
-                           (for-each (lambda (pairing)
-                                       (let* ((dest-index (dest-fn pairing))
-                                              (portal (pget pairing 'face))
-                                              (portal-area (face:area portal))
-                                              (portal-covering-set (filter-map (lambda (face)
-                                                                                 (face:intersection portal face))
-                                                                               covering-set))
-                                              (covering-area (apply + (map face:area portal-covering-set)))
-                                              (portals (pget leaf-data 'portals))
-                                              (new-leaf-data (pput leaf-data 'portals (cons portal portals))))
-                                         (if (> portal-area covering-area)
-                                             ;; TODO: Also set destination here
-                                             (begin
-                                               (display "Established neighbors: ")
-                                               (display leaf-index)
-                                               (display " -> ")
-                                               (display dest-index)
-                                               (newline)
-                                               (vector-set! bsp-vector leaf-index new-leaf-data)))))
-                                     run)))
-                       index-runs)))
+          (let* ((sorted (sort pairings (lambda (pairing other)
+                                                   (< (index-fn pairing)
+                                                      (index-fn other)))))
+                 (index-runs (runs (lambda (pairing other)
+                                     (= (index-fn pairing)
+                                        (index-fn other))) sorted)))
+            (for-each (lambda (run) ;; Each run is guaranteed to be non-empty
+                        (let* ((leaf-index (index-fn (car run)))
+                               (leaf-data (vector-ref bsp-vector leaf-index))
+                               (plane (face->plane face))
+                               (covering-set (pget leaf-data 'solids))
+                               (covering-set (filter (lambda (solid) (plane~= plane (face->plane solid)))
+                                                     covering-set))
+                               (covering-set (face:carve-all covering-set)))
+                          (for-each (lambda (pairing)
+                                      (let* ((dest-index (dest-fn pairing))
+                                             (portal-face (pget pairing 'face))
+                                             (portal-area (face:area portal-face))
+                                             (portal-covering-set (filter-map (lambda (face)
+                                                                                (face:intersection portal-face face))
+                                                                              covering-set))
+                                             (covering-area (apply + (map face:area portal-covering-set)))
+                                             (portals (pget leaf-data 'portals))
+                                             (new-portal (list 'face portal-face 'neighbor dest-index))
+                                             (new-leaf-data (pput leaf-data 'portals (cons new-portal portals))))
+                                        (if (> portal-area covering-area)
+                                            ;; TODO: Also set destination here
+                                            (vector-set! bsp-vector leaf-index new-leaf-data)
+                                            )))
+                                    run)))
+                      index-runs)))
 
         ;; Write the lhs portals, pointing to the rhs neighbors
         (set-neighbors! neighbor-pairings pairing-lhs-index pairing-rhs-index)
@@ -275,6 +271,35 @@
         ;; Write the rhs portals, pointing to the lhs neighbors
         (set-neighbors! neighbor-pairings pairing-rhs-index pairing-lhs-index)))
     (for-each (lambda (face) (add-bsp-portal! bsp-tree face)) bounds-faces)))
+
+(define (mark-inside! bsp point-inside)
+  (define (find-inside-leaf bsp-tree point-inside)
+    (cond [(null? bsp-tree) #f]
+          [(tree-leaf? bsp-tree)
+           (tree-datum bsp-tree)]
+          [else
+            (let ((splitting-plane (tree-datum bsp-tree)))
+              (if (negative? (v3:dot (v3:sub point-inside (plane-point splitting-plane))
+                                     (plane-normal splitting-plane)))
+                  (find-inside-leaf (tree-lhs bsp-tree) point-inside)
+                  (find-inside-leaf (tree-rhs bsp-tree) point-inside)))]))
+  (let* ((bsp-tree (plist-get bsp 'tree))
+         (bsp-vector (plist-get bsp 'vector))
+         (leaf-index (find-inside-leaf bsp-tree point-inside)))
+
+    (let self ((leaf-index leaf-index) (depth-limit 4))
+      (let ((leaf-data (vector-ref bsp-vector leaf-index)))
+        (if (and #t #| (> depth-limit 0) |#
+                 (not (plist-ref leaf-data 'inside?)))
+            (begin
+              (vector-set! bsp-vector
+                           leaf-index
+                           (plist-put leaf-data 'inside? #t))
+              (for-each (lambda (portal)
+                          (self (plist-get portal 'neighbor) (- depth-limit 1)))
+                        (plist-ref leaf-data 'portals))))))))
+
+
 
 ;; Just the positive leafs of the bsp-tree
 (define (bsp-+prop bsp prop)
@@ -297,6 +322,20 @@
                     'rhs)]))))
 
 ;; All leafs of the bsp-tree
+(define (bsp-leafs bsp)
+  (let ((bsp-tree   (plist-get bsp 'tree))
+        (bsp-vector (plist-get bsp 'vector)))
+    (let self ((bsp-tree bsp-tree) (leafs '()))
+      (cond [(null? bsp-tree) leafs]
+            [(tree-leaf? bsp-tree)
+             (let* ((index (tree-datum bsp-tree))
+                    (leaf (vector-ref bsp-vector index)))
+               (cons leaf leafs))]
+            [else (self
+                    (tree-rhs bsp-tree)
+                    (self (tree-lhs bsp-tree) leafs))]))))
+
+;; All properties of a leaf of the bsp tree
 (define (bsp-prop bsp prop)
   (let ((bsp-tree   (plist-get bsp 'tree))
         (bsp-vector (plist-get bsp 'vector)))

@@ -4,6 +4,8 @@
   (srfi srfi-43) ; Vector map
   (srfi srfi-180) ; Json parsing
   (ice-9 receive) ; Multiple-returns
+  (bsp list)
+  (bsp plist)
   (bsp bounds)
   (bsp alist)
   (bsp vec3)
@@ -53,19 +55,33 @@
         (error "could not save face: " face)
         sanitized)))
 
-
 (define faces (map sanitize-face faces))
 
 
 (println "Starting tree-ify")
 
 (define bsp (make-bsp faces))
-(define boundary (make-boundary 20.0))
-(add-bsp-portals! bsp boundary)
-(define leafs (bsp-solids bsp))
-(define portals (bsp-portals bsp))
+(define boundary (make-boundary 100.0))
 
+(println "Adding portals")
+(add-bsp-portals! bsp boundary)
+
+(println "Marking inside")
+(mark-inside! bsp (make-vec3 0 0 10))
+
+(define leafs (bsp-leafs bsp))
+(define inside-leafs (filter (lambda (leaf) (plist-ref leaf 'inside?)) leafs))
+(define outside-leafs (filter (lambda (leaf) (not (plist-ref leaf 'inside?))) leafs))
 (println "Bsp tree complete")
+
+(println "Leaf count: ")
+(println (length leafs))
+
+(println "Inside count: ")
+(println (length inside-leafs))
+
+(println "Outside count: ")
+(println (length outside-leafs))
 
 (define (make-indexed-faces leaf)
   (define (make-indexed-face len.verts face)
@@ -103,23 +119,22 @@
 
 (println "Solids...")
 (define convex-out (list->vector (filter-map (lambda (leaf)
-                                        (receive (verts faces)
-                                                 (make-indexed-faces leaf)
-                                                 (if (positive? (vector-length faces))
-                                                     (println (vector-length faces)))
-                                                 (and (positive? (vector-length faces))
-                                                      `((vertices . ,verts) (faces . ,faces)))))
-                                      leafs)))
+                                               (receive (verts faces)
+                                                        (make-indexed-faces leaf)
+                                                        (and (positive? (vector-length faces))
+                                                             `((vertices . ,verts) (faces . ,faces)))))
+                                             (map (lambda (leaf) (plist-ref leaf 'solids))
+                                                  inside-leafs))))
 
 (println "Portals...")
 (define portals-out (list->vector (filter-map (lambda (portal)
-                                        (receive (verts faces)
-                                                 (make-indexed-faces portal)
-                                                 (if (positive? (vector-length faces))
-                                                     (println (vector-length faces)))
-                                                 (and (positive? (vector-length faces))
-                                                      `((vertices . ,verts) (faces . ,faces)))))
-                                      portals)))
+                                                (receive (verts faces)
+                                                         (make-indexed-faces portal)
+                                                         (and (positive? (vector-length faces))
+                                                              `((vertices . ,verts) (faces . ,faces)))))
+                                              (map (lambda (portals) (map (lambda (portal) (plist-ref portal 'face)) portals))
+                                                   (map (lambda (leaf) (plist-ref leaf 'portals))
+                                                        inside-leafs)))))
 (call-with-output-file "convex.json" (lambda (port) (json-write convex-out port)))
 (call-with-output-file "portal.json" (lambda (port) (json-write portals-out port)))
 
