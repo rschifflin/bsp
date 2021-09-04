@@ -258,9 +258,25 @@
                                              (portals (pget leaf-data 'portals))
                                              (new-portal (list 'face portal-face 'neighbor dest-index))
                                              (new-leaf-data (pput leaf-data 'portals (cons new-portal portals))))
-                                        (if (> portal-area covering-area)
-                                            ;; TODO: Also set destination here
+
+                                        ;; TODO: Measure by some epsilon. Be aware of accumulated rounding errors!
+                                        (if (> portal-area (+ 0.1 covering-area))
                                             (vector-set! bsp-vector leaf-index new-leaf-data)
+                                            (if (> portal-area (+ 0.0001 covering-area))
+                                                (begin
+                                                  (display "Possible rounding difference: ")
+                                                  (display portal-area)
+                                                  (display " vs " )
+                                                  (display covering-area)
+                                                  (newline)
+                                                  (display "Portal is: ")
+                                                  (display portal-face)
+                                                  (newline)
+                                                  (display "Covering set is: ")
+                                                  (display portal-covering-set)
+                                                  (newline)
+                                                  (newline)
+                                                  ))
                                             )))
                                     run)))
                       index-runs)))
@@ -286,12 +302,14 @@
   (let* ((bsp-tree (plist-get bsp 'tree))
          (bsp-vector (plist-get bsp 'vector))
          (leaf-index (find-inside-leaf bsp-tree point-inside)))
-
-    (let self ((leaf-index leaf-index) (depth-limit 4))
+    (let self ((leaf-index leaf-index) (depth-limit 256))
       (let ((leaf-data (vector-ref bsp-vector leaf-index)))
-        (if (and #t #| (> depth-limit 0) |#
+        (if (and (> depth-limit 0)
                  (not (plist-ref leaf-data 'inside?)))
             (begin
+              (display "MARKING LEAF: ")
+              (display leaf-index)
+              (newline)
               (vector-set! bsp-vector
                            leaf-index
                            (plist-put leaf-data 'inside? #t))

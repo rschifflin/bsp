@@ -61,13 +61,13 @@
 (println "Starting tree-ify")
 
 (define bsp (make-bsp faces))
-(define boundary (make-boundary 100.0))
+(define boundary (make-boundary 1000.0))
 
 (println "Adding portals")
 (add-bsp-portals! bsp boundary)
 
 (println "Marking inside")
-(mark-inside! bsp (make-vec3 0 0 10))
+(mark-inside! bsp (make-vec3 88 89 54))
 
 (define leafs (bsp-leafs bsp))
 (define inside-leafs (filter (lambda (leaf) (plist-ref leaf 'inside?)) leafs))

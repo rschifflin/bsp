@@ -52,17 +52,19 @@
     (make-plane point
                 (v3:neg normal))))
 
-;;; True if two planes are equal
-(define (plane= p1 p2)
-  (and (v3:= (plane-normal p1) (plane-normal p2))
+(define (within-tolerance n)
+  (and
+    (< n TOLERANCE)
+    (> n (- TOLERANCE))))
+
+;;; True if two planes are roughly equal
+(define (plane~= p1 p2)
+  (and (< (v3:length (v3:cross (plane-normal p1) (plane-normal p2)))
+          TOLERANCE)
        (let* ((difference (v3:sub (plane-point p2) (plane-point p1)))
               (dot (v3:dot difference (plane-normal p1))))
-         (= dot 0))))
-
-;;; True if two planes are equal, allowing normals with opposite direction
-(define (plane~= p1 p2)
-  (or (plane= p1 p2)
-      (plane= p1 (plane-flip p2))))
+         (and (< dot TOLERANCE)
+              (> dot (- TOLERANCE))))))
 
 (define (plane->u8vector p)
   (let* ((point-u8vector (vec3->u8vector (plane-point p)))
