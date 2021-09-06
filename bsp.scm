@@ -20,16 +20,14 @@
 ;; Convert vertices/faces to fat face list
 (println "Starting import...")
 
+(define inside (apply make-vec3 (vector->list (aref json-in 'inside))))
 (define meshes (vector->list (aref json-in 'meshes)))
 (define (mesh->faces mesh)
   (vector->list
     (vector-map (lambda (_index face)
                   (vector->list (vector-map (lambda (_index vert-idx)
-                                              (let* ((vertex (vector-ref (aref mesh 'vertices) vert-idx))
-                                                     (x (vector-ref vertex 0))
-                                                     (y (vector-ref vertex 1))
-                                                     (z (vector-ref vertex 2)))
-                                                (make-vec3 x y z)))
+                                              (let* ((vertex (vector-ref (aref mesh 'vertices) vert-idx)))
+                                                (apply make-vec3 (vector->list vertex))))
                                             face)))
                 (aref mesh 'faces))))
 (define faces (flat-map mesh->faces meshes))
@@ -68,7 +66,7 @@
 (add-bsp-portals! bsp boundary)
 
 (println "Marking inside")
-(mark-inside! bsp (make-vec3 0 0 0))
+(mark-inside! bsp inside)
 
 (define leafs (bsp-leafs bsp))
 (define inside-leafs (filter (lambda (leaf) (plist-ref leaf 'inside?)) leafs))
