@@ -11,27 +11,29 @@
   (bsp vec3)
   (bsp lib))
 
-(define json-in (call-with-input-file "concave.json" json-read))
+(define args (cdr (command-line)))
+(define input-file-name (if (null? args) "concave.json" (car args)))
+(define json-in (call-with-input-file input-file-name json-read))
 (define (println x)
   (display x) (newline))
 
 ;; Convert vertices/faces to fat face list
 (println "Starting import...")
 
-(define poly (vector-ref json-in 0))
-(define faces (vector->list
-                (vector-map (lambda (_index face)
-                              (vector->list (vector-map (lambda (_index vert-idx)
-                                                          (let* ((vertex (vector-ref (aref poly 'vertices) vert-idx))
-                                                                 (x (vector-ref vertex 0))
-                                                                 (y (vector-ref vertex 1))
-                                                                 (z (vector-ref vertex 2)))
-                                                            (make-vec3 x y z)))
-                                                        face)))
-                            (aref poly 'faces))))
-
+(define meshes (vector->list (aref json-in 'meshes)))
+(define (mesh->faces mesh)
+  (vector->list
+    (vector-map (lambda (_index face)
+                  (vector->list (vector-map (lambda (_index vert-idx)
+                                              (let* ((vertex (vector-ref (aref mesh 'vertices) vert-idx))
+                                                     (x (vector-ref vertex 0))
+                                                     (y (vector-ref vertex 1))
+                                                     (z (vector-ref vertex 2)))
+                                                (make-vec3 x y z)))
+                                            face)))
+                (aref mesh 'faces))))
+(define faces (flat-map mesh->faces meshes))
 (println "Import complete.")
-
 (println "Sanitizing faces...")
 
 ;; TODO: Hacky. Do this properly in a make-face constructor. Doesn't account for future face features like UV coords
@@ -57,7 +59,6 @@
 
 (define faces (map sanitize-face faces))
 
-
 (println "Starting tree-ify")
 
 (define bsp (make-bsp faces))
@@ -67,11 +68,12 @@
 (add-bsp-portals! bsp boundary)
 
 (println "Marking inside")
-(mark-inside! bsp (make-vec3 88 89 54))
+(mark-inside! bsp (make-vec3 0 0 0))
 
 (define leafs (bsp-leafs bsp))
 (define inside-leafs (filter (lambda (leaf) (plist-ref leaf 'inside?)) leafs))
 (define outside-leafs (filter (lambda (leaf) (not (plist-ref leaf 'inside?))) leafs))
+
 (println "Bsp tree complete")
 
 (println "Leaf count: ")
@@ -82,6 +84,15 @@
 
 (println "Outside count: ")
 (println (length outside-leafs))
+
+;;; TODO: Enable rebuilding the bsp tree using only the inside leafs
+#|
+(println "Rebuilding the bsp tree using only the inside leaves...")
+(define faces (flat-map (lambda (leaf) (pget leaf 'solids)) inside-leafs))
+(define bsp (make-bsp faces))
+(add-bsp-portals! bsp boundary)
+(define inside-leafs (bsp-leafs bsp))
+|#
 
 (define (make-indexed-faces leaf)
   (define (make-indexed-face len.verts face)

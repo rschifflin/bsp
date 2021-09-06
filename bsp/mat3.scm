@@ -10,9 +10,9 @@
                          m3:rotate-align))
 
 (define (@m mat3 col row)
-  (f32vector-ref mat3 (+ (* 3 col) row)))
+  (f64vector-ref mat3 (+ (* 3 col) row)))
 
-(define make-mat3 f32vector)
+(define make-mat3 f64vector)
 
 (define (m3:v3:* m v)
   (make-vec3

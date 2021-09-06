@@ -260,24 +260,8 @@
                                              (new-leaf-data (pput leaf-data 'portals (cons new-portal portals))))
 
                                         ;; TODO: Measure by some epsilon. Be aware of accumulated rounding errors!
-                                        (if (> portal-area (+ 0.1 covering-area))
-                                            (vector-set! bsp-vector leaf-index new-leaf-data)
-                                            (if (> portal-area (+ 0.0001 covering-area))
-                                                (begin
-                                                  (display "Possible rounding difference: ")
-                                                  (display portal-area)
-                                                  (display " vs " )
-                                                  (display covering-area)
-                                                  (newline)
-                                                  (display "Portal is: ")
-                                                  (display portal-face)
-                                                  (newline)
-                                                  (display "Covering set is: ")
-                                                  (display portal-covering-set)
-                                                  (newline)
-                                                  (newline)
-                                                  ))
-                                            )))
+                                        (if (> portal-area (+ 0.00001 covering-area))
+                                            (vector-set! bsp-vector leaf-index new-leaf-data))))
                                     run)))
                       index-runs)))
 

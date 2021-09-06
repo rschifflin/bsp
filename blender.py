@@ -1,13 +1,20 @@
 # Blender export currently selected mesh as json
 import sys
 import json
-def write_concave_json():
-    mesh = C.object.data
-    location = C.object.location
-    obj = [{"vertices": list(map(lambda v: (location + v.co).to_tuple(), mesh.vertices)),
-            "faces": list(map(lambda f: list(f.vertices), mesh.polygons))}]
-    file = open("concave.json", "w")
-    file.write(json.dumps(obj))
+def export_geometry(filename):
+    def mesh2dict(mesh):
+        matrix = mesh.matrix_world
+        data = mesh.data
+        return {"vertices": list(map(lambda v: (matrix @ v.co).to_tuple(), data.vertices)),
+                "faces": list(map(lambda f: list(f.vertices), data.polygons))}
+    inside = D.collections['Entities'].objects['inside'].location.to_tuple()
+    geometry = D.collections['Geometry']
+    mesh_objects = filter(lambda obj: obj.type == "MESH", geometry.objects);
+    meshes = list(map(mesh2dict, mesh_objects))
+    export = {"inside": inside,
+              "meshes": meshes }
+    file = open(filename, "w")
+    file.write(json.dumps(export))
     file.close()
 
 # Blender export currently selected mesh as plane
@@ -30,7 +37,7 @@ import sys
 import json
 import bpy
 
-def read_json(filename):
+def import_geometry(filename):
     file = open(filename, "r")
     obj = json.loads(file.read())
     file.close()

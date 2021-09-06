@@ -19,15 +19,15 @@
                          v3:length))
 ;; Simple vector-3 math
 (define (@x v)
-  (f32vector-ref v 0))
+  (f64vector-ref v 0))
 
 (define (@y v)
-  (f32vector-ref v 1))
+  (f64vector-ref v 1))
 
 (define (@z v)
-  (f32vector-ref v 2))
+  (f64vector-ref v 2))
 
-(define make-vec3 f32vector)
+(define make-vec3 f64vector)
 
 ;; Partially orders two vec3s.
 ;; Returns a two-element list, (smaller, larger)
@@ -35,8 +35,8 @@
   (let self ((idx 0))
     (if (= idx 3)
         `(,v0 ,v1)
-        (let ((a (f32vector-ref v0 idx))
-              (b (f32vector-ref v1 idx)))
+        (let ((a (f64vector-ref v0 idx))
+              (b (f64vector-ref v1 idx)))
           (cond [(= a b) (self (+ 1 idx))]
                 [(cmp? a b) `(,v0 ,v1)]
                 [else `(,v1 ,v0)])))))
