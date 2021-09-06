@@ -1,8 +1,8 @@
-(define-module (bsp plane)
+(define-module (bsp geo plane)
                #:use-module (rnrs bytevectors)
-               #:use-module (bsp list)
-               #:use-module (bsp vec3)
-               #:use-module (bsp line)
+               #:use-module (bsp sewer list)
+               #:use-module (bsp geo vec3)
+               #:use-module (bsp geo line)
                #:export (make-plane
                          make-plane-from-points
                          plane-point

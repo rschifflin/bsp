@@ -1,5 +1,5 @@
 ;; Provides higher-order functions for convenience
-(define-module (bsp fn)
+(define-module (bsp sewer fn)
                #:export (applied first-arg))
 
 ;; Returns a function which takes a list

@@ -1,6 +1,6 @@
-(define-module (bsp list)
+(define-module (bsp sewer list)
                #:use-module (srfi srfi-1)
-               #:use-module (bsp fn)
+               #:use-module (bsp sewer fn)
                #:export (all?
                           any?
                           dedup

@@ -1,4 +1,4 @@
-(define-module (bsp plist)
+(define-module (bsp sewer plist)
                #:use-module (srfi srfi-1)
                #:export (plist?
                          plist-ref

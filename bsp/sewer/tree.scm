@@ -1,4 +1,4 @@
-(define-module (bsp tree)
+(define-module (bsp sewer tree)
                #:export (make-tree
                          tree-datum
                          tree-children

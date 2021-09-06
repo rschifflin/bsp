@@ -1,15 +1,15 @@
 (define-module (bsp clip)
                #:use-module (srfi srfi-1)
                #:use-module (srfi srfi-2)
-               #:use-module (bsp fn)
+               #:use-module (bsp sewer fn)
+               #:use-module (bsp sewer list)
+               #:use-module (bsp sewer plist)
+               #:use-module (bsp geo bounds)
+               #:use-module (bsp geo plane)
+               #:use-module (bsp geo line)
+               #:use-module (bsp geo face)
+               #:use-module (bsp geo vec3)
                #:use-module (bsp macros)
-               #:use-module (bsp list)
-               #:use-module (bsp plist)
-               #:use-module (bsp bounds)
-               #:use-module (bsp plane)
-               #:use-module (bsp line)
-               #:use-module (bsp face)
-               #:use-module (bsp vec3)
                #:export (clip-plane-boundary
                          clip-plane-face
                          clip-clipped?

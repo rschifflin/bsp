@@ -1,4 +1,4 @@
-(define-module (bsp vec3)
+(define-module (bsp geo vec3)
                #:export (@x @y @z
                          make-vec3
                          vec3->vector

@@ -7,13 +7,13 @@
 (define-module (bsp lib)
                #:use-module (srfi srfi-1)
                #:use-module (ice-9 receive)
-               #:use-module (bsp list)
-               #:use-module (bsp plane)
-               #:use-module (bsp face)
-               #:use-module (bsp vec3)
+               #:use-module (bsp sewer list)
+               #:use-module (bsp sewer plist)
+               #:use-module (bsp sewer tree)
+               #:use-module (bsp geo plane)
+               #:use-module (bsp geo face)
+               #:use-module (bsp geo vec3)
                #:use-module (bsp clip)
-               #:use-module (bsp plist)
-               #:use-module (bsp tree)
                #:export (make-bsp
                          add-bsp-portals!
                          mark-inside!

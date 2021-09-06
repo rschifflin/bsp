@@ -1,10 +1,10 @@
 ;;; Defines the interface of a face; a 2d convex planar polygon
 ;;; Represented internally as a list of points ordered in a ccw winding
-(define-module (bsp face)
+(define-module (bsp geo face)
                #:use-module (srfi srfi-1)
-               #:use-module (bsp list)
-               #:use-module (bsp vec3)
-               #:use-module (bsp plane)
+               #:use-module (bsp sewer list)
+               #:use-module (bsp geo plane)
+               #:use-module (bsp geo vec3)
                #:use-module (bsp clip)
                #:export (make-face
                           face:area

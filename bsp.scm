@@ -4,11 +4,11 @@
   (srfi srfi-43) ; Vector map
   (srfi srfi-180) ; Json parsing
   (ice-9 receive) ; Multiple-returns
-  (bsp list)
-  (bsp plist)
-  (bsp bounds)
-  (bsp alist)
-  (bsp vec3)
+  (bsp sewer list)
+  (bsp sewer alist)
+  (bsp sewer plist)
+  (bsp geo bounds)
+  (bsp geo vec3)
   (bsp lib))
 
 (define args (cdr (command-line)))

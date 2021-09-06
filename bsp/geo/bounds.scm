@@ -1,7 +1,6 @@
-(define-module (bsp bounds)
-               #:use-module (bsp vec3)
-               #:use-module (bsp line)
-               #:use-module (bsp line)
+(define-module (bsp geo bounds)
+               #:use-module (bsp geo vec3)
+               #:use-module (bsp geo line)
                #:export (make-boundary
                          within-bounds
                          bounds-lines

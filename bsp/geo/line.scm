@@ -1,5 +1,5 @@
-(define-module (bsp line)
-               #:use-module (bsp vec3)
+(define-module (bsp geo line)
+               #:use-module (bsp geo vec3)
                #:export (make-line
                          make-line-from-points
                          line-point
