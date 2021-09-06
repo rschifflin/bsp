@@ -12,7 +12,6 @@
                #:use-module (bsp face)
                #:use-module (bsp vec3)
                #:use-module (bsp clip)
-               #:use-module (bsp hash)
                #:use-module (bsp plist)
                #:use-module (bsp tree)
                #:export (make-bsp

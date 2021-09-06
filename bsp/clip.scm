@@ -10,7 +10,6 @@
                #:use-module (bsp line)
                #:use-module (bsp face)
                #:use-module (bsp vec3)
-               #:use-module (bsp mat3)
                #:export (clip-plane-boundary
                          clip-plane-face
                          clip-clipped?
