@@ -83,6 +83,11 @@ The linear algebra submodule, which logically groups all the geometric primitive
 - `(bsp geo vec3)` defines 3-element vectors
 - `(bsp geo bounds)` to generate a bounding cube of a given length
 
+## Serde
+The serialization/deserialization submodule gives us helpers for importing/exporting files
+- `(bsp serde import)` handles importing
+- `(bsp serde export)` handles exporting
+
 ## Main
 The bsp module itself contains a few directly relevant submodules
 - `(bsp lib)` exports the main `make-bsp` function and the various operations on it.
