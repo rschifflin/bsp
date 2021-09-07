@@ -8,6 +8,8 @@
   (bsp sewer alist)
   (bsp sewer plist)
   (bsp sewer display)
+  (bsp serde import)
+  (bsp serde export)
   (bsp geo bounds)
   (bsp geo vec3)
   (bsp geo face)
@@ -15,22 +17,14 @@
 
 (define args (cdr (command-line)))
 (define input-file-name (if (null? args) "concave.json" (car args)))
-(define json-in (call-with-input-file input-file-name json-read))
 
 ;; Convert vertices/faces to fat face list
 (println "Starting import...")
 
-(define inside (apply make-vec3 (vector->list (aref json-in 'inside))))
-(define meshes (vector->list (aref json-in 'meshes)))
-(define (mesh->faces mesh)
-  (vector->list
-    (vector-map (lambda (_index face)
-                  (vector->list (vector-map (lambda (_index vert-idx)
-                                              (let* ((vertex (vector-ref (aref mesh 'vertices) vert-idx)))
-                                                (apply make-vec3 (vector->list vertex))))
-                                            face)))
-                (aref mesh 'faces))))
-(define faces (flat-map mesh->faces meshes))
+(define scene (call-with-input-file input-file-name import-scene))
+(define inside (pget scene 'inside))
+(define raw-faces (pget scene 'faces))
+
 (println "Import complete.")
 (println "Sanitizing faces...")
 
@@ -56,7 +50,7 @@
               [(not (face-planar? sanitized)) (error "face not planar: " face)]
               [else sanitized])))
 
-(define faces (map sanitize-face faces))
+(define faces (map sanitize-face raw-faces))
 (println "Ingesting " (length faces) " sanitized faces")
 
 (println "Starting tree-ify")
@@ -127,26 +121,18 @@
 
 (println "Starting export...")
 
+(println "Exporting solids...")
+(call-with-output-file "convex.json"
+                       (lambda (port) (export-meshes
+                                         (map (lambda (leaf) (plist-ref leaf 'solids)) inside-leafs)
+                                         port)))
 
-(println "Solids...")
-(define convex-out (list->vector (filter-map (lambda (leaf)
-                                               (receive (verts faces)
-                                                        (make-indexed-faces leaf)
-                                                        (and (positive? (vector-length faces))
-                                                             `((vertices . ,verts) (faces . ,faces)))))
-                                             (map (lambda (leaf) (plist-ref leaf 'solids))
-                                                  inside-leafs))))
-
-(println "Portals...")
-(define portals-out (list->vector (filter-map (lambda (portal)
-                                                (receive (verts faces)
-                                                         (make-indexed-faces portal)
-                                                         (and (positive? (vector-length faces))
-                                                              `((vertices . ,verts) (faces . ,faces)))))
-                                              (map (lambda (portals) (map (lambda (portal) (plist-ref portal 'face)) portals))
+(println "Exporting portals...")
+(call-with-output-file "portal.json"
+                       (lambda (port) (export-meshes
+                                         (map (lambda (portals) (map (lambda (portal) (plist-ref portal 'face)) portals))
                                                    (map (lambda (leaf) (plist-ref leaf 'portals))
-                                                        inside-leafs)))))
-(call-with-output-file "convex.json" (lambda (port) (json-write convex-out port)))
-(call-with-output-file "portal.json" (lambda (port) (json-write portals-out port)))
+                                                        inside-leafs))
+                                         port)))
 
 (println "Export complete")

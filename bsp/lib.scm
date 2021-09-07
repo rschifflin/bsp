@@ -291,7 +291,6 @@
         (if (and (> depth-limit 0)
                  (not (plist-ref leaf-data 'inside?)))
             (begin
-              (println "MARKING LEAF: " leaf-index)
               (vector-set! bsp-vector
                            leaf-index
                            (plist-put leaf-data 'inside? #t))
