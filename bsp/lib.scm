@@ -6,10 +6,13 @@
 ;;; A face is a planar convex polygon composed of vertex indices
 (define-module (bsp lib)
                #:use-module (srfi srfi-1)
+               #:use-module (srfi srfi-26)
                #:use-module (ice-9 receive)
                #:use-module (bsp sewer list)
                #:use-module (bsp sewer plist)
                #:use-module (bsp sewer tree)
+               #:use-module (bsp sewer display)
+               #:use-module (bsp geo consts)
                #:use-module (bsp geo plane)
                #:use-module (bsp geo face)
                #:use-module (bsp geo vec3)
@@ -28,7 +31,6 @@
   (car working-set))
 
 ;;; Derive a plane from the face
-;;; Since the face is planar, sampling any 3 points is enough to define the plane.
 (define (partition-splits splitting-plane faces,clips)
 
   ;;; Returns four values, +face, -face, +=face, -=face
@@ -64,7 +66,7 @@
             candidate-faces ;; List of faces which haven't been chosen as splitplanes yet
             applied-faces   ;; List of faces already chosen as splitplanes before
             index           ;; Counter representing existing number of leaves
-            leaf-list)       ;; List holding leaf data in index order
+            leaf-list)      ;; List holding leaf data in index order
     (if (null? candidate-faces)
         (list 'index (+ index 1)
               'tree (make-tree index)
@@ -72,9 +74,12 @@
                           leaf-list))
         (let* ((splitting-face  (choose-splitting-face candidate-faces))
                (splitting-plane (face->plane splitting-face))
-               (clip (lambda (face) (clip-plane-face splitting-plane face)))
+               (clip (cut clip-plane-face splitting-plane <>))
                (candidate-clips (map clip candidate-faces))
                (applied-clips (map clip applied-faces)))
+          ;; TODO: Add this to sanitization too
+          (for-each (lambda (face) (println "Warning: degenerate candidate " face))
+            (filter face-degenerate? candidate-faces))
 
           ;; Partition splits into +/-
           (receive (+candidates -candidates +=candidates -=candidates)
@@ -194,10 +199,7 @@
     (if (or (null? lhs)
             (null? rhs))
         pairings
-        (fold (lambda (left-neighbor pairings)
-                (pairs-for-neighbor left-neighbor rhs pairings))
-              pairings
-              lhs))
+        (fold (cut pairs-for-neighbor <> rhs <>) pairings lhs))
     ))
 
 (define (add-bsp-portals!
@@ -243,8 +245,7 @@
                                (leaf-data (vector-ref bsp-vector leaf-index))
                                (plane (face->plane face))
                                (covering-set (pget leaf-data 'solids))
-                               (covering-set (filter (lambda (solid) (plane~= plane (face->plane solid)))
-                                                     covering-set))
+                               (covering-set (filter (lambda (solid) (plane~= plane (face->plane solid))) covering-set))
                                (covering-set (face:carve-all covering-set)))
                           (for-each (lambda (pairing)
                                       (let* ((dest-index (dest-fn pairing))
@@ -258,8 +259,8 @@
                                              (new-portal (list 'face portal-face 'neighbor dest-index))
                                              (new-leaf-data (pput leaf-data 'portals (cons new-portal portals))))
 
-                                        ;; TODO: Measure by some epsilon. Be aware of accumulated rounding errors!
-                                        (if (> portal-area (+ 0.00001 covering-area))
+                                        ;; If the portal is less than 99.9999% covered, consider it valid
+                                        (if (< (/ covering-area portal-area) FULL_COVERING_RATIO)
                                             (vector-set! bsp-vector leaf-index new-leaf-data))))
                                     run)))
                       index-runs)))
@@ -269,7 +270,7 @@
 
         ;; Write the rhs portals, pointing to the lhs neighbors
         (set-neighbors! neighbor-pairings pairing-rhs-index pairing-lhs-index)))
-    (for-each (lambda (face) (add-bsp-portal! bsp-tree face)) bounds-faces)))
+    (for-each (cut add-bsp-portal! bsp-tree <>) bounds-faces)))
 
 (define (mark-inside! bsp point-inside)
   (define (find-inside-leaf bsp-tree point-inside)
@@ -290,9 +291,7 @@
         (if (and (> depth-limit 0)
                  (not (plist-ref leaf-data 'inside?)))
             (begin
-              (display "MARKING LEAF: ")
-              (display leaf-index)
-              (newline)
+              (println "MARKING LEAF: " leaf-index)
               (vector-set! bsp-vector
                            leaf-index
                            (plist-put leaf-data 'inside? #t))

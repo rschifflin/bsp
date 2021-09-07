@@ -1,4 +1,5 @@
 (define-module (bsp geo vec3)
+               #:use-module (bsp geo consts)
                #:export (@x @y @z
                          make-vec3
                          vec3->vector
@@ -16,6 +17,7 @@
                          v3:cross
                          v3:dot
                          v3:norm
+                         v3:norm=
                          v3:length))
 ;; Simple vector-3 math
 (define (@x v)
@@ -58,11 +60,13 @@
        (= (@y v0) (@y v1))
        (= (@z v0) (@z v1))))
 
-(define EPSILON 0.0001)
-
 (define (~= x y)
-  (and (< (- x y) EPSILON)
-       (> (- x y) (- EPSILON))))
+  (and (< (- x y) VECTOR_EPSILON)
+       (> (- x y) (- VECTOR_EPSILON))))
+
+(define (v3:norm= n0 n1)
+  (< (v3:length (v3:cross n0 n1)) VECTOR_EPSILON))
+
 
 (define (v3:~= v0 v1)
   (and (~= (@x v0) (@x v1))
@@ -133,7 +137,9 @@
          (len (sqrt (+ (* x x)
                        (* y y)
                        (* z z)))))
-    (make-vec3
-      (/ x len)
-      (/ y len)
-      (/ z len))))
+    (if (zero? len)
+        v
+        (make-vec3
+          (/ x len)
+          (/ y len)
+          (/ z len)))))

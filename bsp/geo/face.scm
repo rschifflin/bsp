@@ -2,7 +2,10 @@
 ;;; Represented internally as a list of points ordered in a ccw winding
 (define-module (bsp geo face)
                #:use-module (srfi srfi-1)
+               #:use-module (srfi srfi-26)
                #:use-module (bsp sewer list)
+               #:use-module (bsp sewer display)
+               #:use-module (bsp geo consts)
                #:use-module (bsp geo plane)
                #:use-module (bsp geo vec3)
                #:use-module (bsp clip)
@@ -13,6 +16,10 @@
                           face:carve-all
                           face=
                           face~=
+                          face-planar?
+                          face-degenerate?
+                          face-points
+                          face-normal
                           face-builder
                           face-builder-add-point
                           face-builder-add-points
@@ -24,6 +31,22 @@
 (define (face-builder-add-point faceb point) (cons point faceb))
 (define (face-builder-add-points faceb points) (fold cons faceb points))
 
+;; A face is planar if all its tris share the same normal
+(define (face-planar? face)
+  (define (tri->normal tri)
+    (let* ((p0 (list-ref tri 0))
+           (p1 (list-ref tri 1))
+           (p2 (list-ref tri 2)))
+      (v3:norm (v3:cross (v3:sub p1 p0)
+                         (v3:sub p2 p0)))))
+  (let* ((points (face-points face))
+         (plane  (face->plane face))
+         (normals (map tri->normal (zip points
+                                        (cdr points)
+                                        (cddr points)))))
+    (all? (cut v3:norm= <> (car normals)) normals)))
+
+(define (face-degenerate? face) (< (face:area face) MIN_AREA))
 
 ;; TODO: Where should this helper function live? in (bsp line)? (bsp line-segment)?
 ;; Helper function to determine if two co-linear segments defined by the lists (a0 a1) and (b0 b1), where ax and bx are vec3 points,
@@ -73,11 +96,10 @@
          (points (face-points f1))
          (plast (last points))
          (lines (zip (cons plast points) points)))
-    (if (not (or (v3:~= normal (face-normal f2))
-                 (v3:~= normal (v3:neg (face-normal f2)))))
+    (if (not (v3:norm= normal (face-normal f2)))
         (error "face:intersection error: arguments f1 and f2 must be co-planar to intersect")
         (let self ((lines lines) (face f2))
-          (if (null? lines) face
+          (if (null? lines) (and (not (face-degenerate? face)) face)
               (let* ((endpoints (car lines))
                      (p0 (first endpoints))
                      (p1 (second endpoints))
@@ -85,10 +107,11 @@
                      (plane (make-plane p0 tangent))
                      (clip (clip-plane-face plane face)))
                 (cond [(clip-clipped? clip)
-                       (self (cdr lines) (clip-+face clip)) ]
+                       (self (cdr lines) (clip-+face clip))]
                       [(eq? (clip-sign clip) '+)
                        (self (cdr lines) face)]
-                      [(eq? (clip-sign clip) '-) #f] ;; If the entire remaining face lies on the negative side of a line,
+                      [(or (eq? (clip-sign clip) '-)
+                           (eq? (clip-sign clip) '=)) #f] ;; If the entire remaining face lies on the negative side of a line,
                                                      ;; the line represents a separating plane and thus no intersection is possible.
                                                      ;; We can immediately return false
                       )))))))
@@ -101,11 +124,10 @@
          (points (face-points f1))
          (plast (last points))
          (lines (zip (cons plast points) points)))
-    (if (not (or (v3:~= normal (face-normal f2))
-                 (v3:~= normal (v3:neg (face-normal f2)))))
+    (if (not (v3:norm= normal (face-normal f2)))
         (error "face:carve error: arguments f1 and f2 must be co-planar to carve")
         (let self ((lines lines) (face f2) (new-faces '()))
-          (if (null? lines) new-faces
+          (if (null? lines) (filter (lambda (face) (not (face-degenerate? face))) new-faces)
               (let* ((endpoints (car lines))
                      (p0 (first endpoints))
                      (p1 (second endpoints))
@@ -118,7 +140,8 @@
                            (self (cdr lines) face new-faces))]
                       [(eq? (clip-sign clip) '+)
                        (self (cdr lines) face new-faces)]
-                      [(eq? (clip-sign clip) '-)
+                      [(or (eq? (clip-sign clip) '-)
+                           (eq? (clip-sign clip) '=))
                        (self '() face (cons face new-faces))])))))))
 
 ;; Given a list of faces, return a list of non-overlapping carved faces
@@ -145,9 +168,9 @@
                  [else (self (cdr lst0) (cdr lst1))])))))
 
 (define (face~= f0 f1)
-  (and (= (length f0) (length f1))
-       (let ((f0-sorted (sort f0 v3:~<))
-             (f1-sorted (sort f1 v3:~<)))
+  (and (= (length (face-points f0)) (length (face-points f1)))
+       (let ((f0-sorted (sort (face-points f0) v3:~<))
+             (f1-sorted (sort (face-points f1) v3:~<)))
          (let self ((lst0 f0-sorted) (lst1 f1-sorted))
            (cond [(null? lst0) #t]
                  [(not (v3:~= (car lst0) (car lst1))) #f]

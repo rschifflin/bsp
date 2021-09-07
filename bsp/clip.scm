@@ -4,12 +4,13 @@
                #:use-module (bsp sewer fn)
                #:use-module (bsp sewer list)
                #:use-module (bsp sewer plist)
+               #:use-module (bsp sewer display)
+               #:use-module (bsp geo consts)
                #:use-module (bsp geo bounds)
                #:use-module (bsp geo plane)
                #:use-module (bsp geo line)
                #:use-module (bsp geo face)
                #:use-module (bsp geo vec3)
-               #:use-module (bsp macros)
                #:export (clip-plane-boundary
                          clip-plane-face
                          clip-clipped?
@@ -18,8 +19,6 @@
                          clip-sign
                          clip-intersections
                          sort-convex-points))
-
-(define PI (* 4 (atan 1)))
 
 ;; TODO: Move this into libface
 ;; points are a list of points on the convex hull of some polygon
@@ -68,22 +67,22 @@
                       (points corner-points))
              (if (null? line-indices)
                  points
-                 (if* (point ? (and-let* ((line-index (car line-indices))
-                                          ((bitvector-bit-set? line-candidates line-index))
-                                          (point (plane-cmp-line plane (vector-ref lines line-index)))
-                                          ((not (eq? point 'none)))
-                                          ((not (eq? point 'inf)))
-                                          ((within-bounds boundary point)))
-                                         point))
-                      (self (cdr line-indices) (cons point points))
-                      (self (cdr line-indices) points)))))
+                 (let ((point (and-let* ((line-index (car line-indices))
+                                         ((bitvector-bit-set? line-candidates line-index))
+                                         (point (plane-cmp-line plane (vector-ref lines line-index)))
+                                         ((not (eq? point 'none)))
+                                         ((not (eq? point 'inf)))
+                                         ((within-bounds boundary point)))
+                                        point)))
+                   (if point
+                       (self (cdr line-indices) (cons point points))
+                       (self (cdr line-indices) points))))))
           (sorted-points (sort-convex-points points (plane-normal plane))))
     ;; Given set of points that lie on a both a plane and the edges of a bounding square
     ;; Find an ordering for the convex shape formed by the points
     ;; Returns false if the points don't form a polygon
     (and sorted-points
          (make-face sorted-points))))
-
 
 (define (clip-clipped? clip)
   (eq? 'clipped (car clip)))
@@ -108,7 +107,7 @@
 ;;;   ('clipped +face -face)
 ;;;   ('unclipped <+|-|=>)
 (define (clip-plane-face plane face)
-  (let ((test (plane-test-face plane face)))
+  (let ((test (plane-test-points plane (face-points face))))
 
     ;; clip props are a plist
     ;; '+face face-builder '-face face-builder 'prev (point sign)
@@ -161,7 +160,7 @@
                                        )))])))
 
     (define (clip signs)
-      (let* ((face+signs (zip face signs))
+      (let* ((face+signs (zip (face-points face) signs))
              (p0    (car face+signs))
              (ptail (cdr face+signs))
              (props (list '+face face-builder
@@ -172,8 +171,18 @@
              (+face (build-face (plist-ref props '+face)))
              (-face (build-face (plist-ref props '-face)))
              (intersections (plist-ref props 'intersections)))
-          `(,+face ,-face ,intersections)))
+        `(,+face ,-face ,intersections)))
 
     (if (plane-test-intersects? test)
-      `(clipped . ,(clip (plane-test-sign test)))
-      `(unclipped ,(plane-test-signs test)))))
+        (let* ((clipped (clip (plane-test-signs test)))
+               (+face (car clipped))
+               (-face (cadr clipped)))
+          (cond [(face-degenerate? +face) (begin
+                                            (println "Clip resulted in degenerate face. Reclipping.")
+                                            (clip-plane-face plane -face))]
+                [(face-degenerate? -face) (begin
+                                            (println "Clip resulted in degenerate face. Reclipping.")
+                                            (clip-plane-face plane +face)
+                                            )]
+                [else `(clipped . ,clipped)]))
+      `(unclipped ,(plane-test-sign test)))))

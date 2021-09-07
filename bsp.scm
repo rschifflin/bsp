@@ -7,15 +7,15 @@
   (bsp sewer list)
   (bsp sewer alist)
   (bsp sewer plist)
+  (bsp sewer display)
   (bsp geo bounds)
   (bsp geo vec3)
+  (bsp geo face)
   (bsp lib))
 
 (define args (cdr (command-line)))
 (define input-file-name (if (null? args) "concave.json" (car args)))
 (define json-in (call-with-input-file input-file-name json-read))
-(define (println x)
-  (display x) (newline))
 
 ;; Convert vertices/faces to fat face list
 (println "Starting import...")
@@ -49,13 +49,15 @@
                 [else
                   (cons p0 (sanitize-edges (cdr edges) v1))]
                 ))))
+
   (let* ((edges (zip (cons (last face) face) face))
-         (sanitized (sanitize-edges edges #f)))
-    (if (< (length sanitized) 3)
-        (error "could not save face: " face)
-        sanitized)))
+             (sanitized (sanitize-edges edges #f)))
+        (cond [(< (length sanitized) 3) (error "could not save face: " face)]
+              [(not (face-planar? sanitized)) (error "face not planar: " face)]
+              [else sanitized])))
 
 (define faces (map sanitize-face faces))
+(println "Ingesting " (length faces) " sanitized faces")
 
 (println "Starting tree-ify")
 
