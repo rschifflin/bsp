@@ -3,13 +3,16 @@
 (define-module (bsp geo face)
                #:use-module (srfi srfi-1)
                #:use-module (srfi srfi-26)
+               #:use-module (bsp sewer tag)
+               #:use-module (bsp sewer trait)
                #:use-module (bsp sewer list)
                #:use-module (bsp sewer display)
                #:use-module (bsp geo consts)
                #:use-module (bsp geo plane)
                #:use-module (bsp geo vec3)
+               #:use-module (bsp geo poly)
                #:use-module (bsp clip)
-               #:export (make-face
+               #:export ( make-face
                           face:area
                           face:intersection
                           face:carve
@@ -26,8 +29,15 @@
                           build-face
                           face->plane))
 
-(define make-face identity)
+;; Example trait impl
+(define-tag <face> : <poly>)
+(define-method (area (self <face>)) (face:area self))
+
+(define (make-face points) (tag points <face>))
+(define face-points untag)
+
 (define face-builder '())
+(define (build-face builder) (make-face (reverse builder)))
 (define (face-builder-add-point faceb point) (cons point faceb))
 (define (face-builder-add-points faceb points) (fold cons faceb points))
 
@@ -159,34 +169,38 @@
         faces))
 
 (define (face= f0 f1)
-  (and (= (length f0) (length f1))
-       (let ((f0-sorted (sort f0 v3:<))
-             (f1-sorted (sort f1 v3:<)))
-         (let self ((lst0 f0-sorted) (lst1 f1-sorted))
-           (cond [(null? lst0) #t]
-                 [(not (v3:= (car lst0) (car lst1))) #f]
-                 [else (self (cdr lst0) (cdr lst1))])))))
+  (let ((f0-points (face-points f0))
+        (f1-points (face-points f1)))
+    (and (= (length f0-points) (length f1-points))
+         (let ((f0-sorted (sort f0-points v3:<))
+               (f1-sorted (sort f1-points v3:<)))
+           (let self ((lst0 f0-sorted) (lst1 f1-sorted))
+             (cond [(null? lst0) #t]
+                   [(not (v3:= (car lst0) (car lst1))) #f]
+                   [else (self (cdr lst0) (cdr lst1))]))))))
 
 (define (face~= f0 f1)
-  (and (= (length (face-points f0)) (length (face-points f1)))
-       (let ((f0-sorted (sort (face-points f0) v3:~<))
-             (f1-sorted (sort (face-points f1) v3:~<)))
-         (let self ((lst0 f0-sorted) (lst1 f1-sorted))
-           (cond [(null? lst0) #t]
-                 [(not (v3:~= (car lst0) (car lst1))) #f]
-                 [else (self (cdr lst0) (cdr lst1))])))))
+  (let ((f0-points (face-points f0))
+        (f1-points (face-points f1)))
+    (and (= (length f0-points) (length f1-points))
+         (let ((f0-sorted (sort f0-points v3:~<))
+               (f1-sorted (sort f1-points v3:~<)))
+           (let self ((lst0 f0-sorted) (lst1 f1-sorted))
+             (cond [(null? lst0) #t]
+                   [(not (v3:~= (car lst0) (car lst1))) #f]
+                   [else (self (cdr lst0) (cdr lst1))]))))))
 
 (define (face-normal face)
-  (let ((p0 (list-ref face 0))
-        (p1 (list-ref face 1))
-        (p2 (list-ref face 2)))
+  (let* ((points (face-points face))
+         (p0 (list-ref points 0))
+         (p1 (list-ref points 1))
+         (p2 (list-ref points 2)))
     (v3:norm (v3:cross (v3:sub p1 p0) (v3:sub p2 p0)))))
 
-(define face-points identity)
-
-(define build-face reverse)
 (define (face->plane face)
-  (let* ((p0 (list-ref face 0))
-         (p1 (list-ref face 1))
-         (p2 (list-ref face 2)))
+  (let* ((points (face-points face))
+         (p0 (list-ref points 0))
+         (p1 (list-ref points 1))
+         (p2 (list-ref points 2)))
     (make-plane-from-points p0 p1 p2)))
+

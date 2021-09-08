@@ -74,6 +74,9 @@ that aren't directly relevant to the problem space:
 - `(bsp sewer alist)` provides asociation list helpers
 - `(bsp sewer plist)` provides property list helpers
 - `(bsp sewer tree)` provides a tree datastructure
+- `(bsp sewer display)` provides helpful print statements
+- `(bsp sewer tag)` provides simple type-tagging for implementing traits
+- `(bsp sewer trait)` provides single-inheritance interfaces of polymorphic functions a la rustlang
 
 ## Geo
 The linear algebra submodule, which logically groups all the geometric primitive modules:

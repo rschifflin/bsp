@@ -29,7 +29,7 @@
 (println "Sanitizing faces...")
 
 ;; TODO: Hacky. Do this properly in a make-face constructor. Doesn't account for future face features like UV coords
-(define (sanitize-face face)
+(define (sanitize-face raw-face)
   (define (sanitize-edges edges v0)
     (if (null? edges) '()
         (let* ((endpoints (car edges))
@@ -44,15 +44,16 @@
                   (cons p0 (sanitize-edges (cdr edges) v1))]
                 ))))
 
-  (let* ((edges (zip (cons (last face) face) face))
-             (sanitized (sanitize-edges edges #f)))
-        (cond [(< (length sanitized) 3) (error "could not save face: " face)]
-              [(not (face-planar? sanitized)) (error "face not planar: " face)]
-              [else sanitized])))
+  (let* ((points raw-face)
+         (edges (zip (cons (last points) points) points))
+         (sanitized (make-face (sanitize-edges edges #f))))
+    (cond [(< (length (face-points sanitized)) 3) (error "could not save face: " face)]
+          [(not (face-planar? sanitized)) (error "face not planar: " face)]
+          [else sanitized])))
 
 (define faces (map sanitize-face raw-faces))
-(println "Ingesting " (length faces) " sanitized faces")
 
+(println "Ingesting " (length faces) " sanitized faces")
 (println "Starting tree-ify")
 
 (define bsp (make-bsp faces))
