@@ -15,8 +15,8 @@
                #:use-module (bsp geo consts)
                #:use-module (bsp geo plane)
                #:use-module (bsp geo face)
+               #:use-module (bsp geo poly)
                #:use-module (bsp geo vec3)
-               #:use-module (bsp clip)
                #:export (make-bsp
                          add-bsp-portals!
                          mark-inside!
@@ -30,31 +30,30 @@
 (define (choose-splitting-face working-set)
   (car working-set))
 
-;;; Derive a plane from the face
-(define (partition-splits splitting-plane faces,clips)
-
-  ;;; Returns four values, +face, -face, +=face, -=face
-  ;;; += and -= indicate the face is planar, but aligned with the plane normal in +=, and opposite in -=
-  (define (partition-split face,clip)
-    (let ((face (car face,clip))
-          (clip (cadr face,clip)))
-      (cond [(clip-clipped? clip) (values (clip-+face clip) (clip--face clip) #f #f)]
-            ;; Otherwise unclipped
-            [(eq? '+ (clip-sign clip)) (values face #f #f #f)]
-            [(eq? '- (clip-sign clip)) (values #f face #f #f)]
-            [(eq? '= (clip-sign clip))
+;; Partition polys based on how they split
+(define (partition-splits splitting-plane polys,splits)
+  ;;; Returns four values, +split, -split, +=split, -=split
+  ;;; += and -= indicate the split is planar, but aligned with the plane normal in +=, and opposite in -=
+  (define (partition-split poly,split)
+    (let ((poly (car poly,split))
+          (split (cadr poly,split)))
+      (cond [(poly-split? split) (values (poly-+split split) (poly--split split) #f #f)]
+            ;; Otherwise unsplit
+            [(eq? '+ (poly-non-split-sign split)) (values poly #f #f #f)]
+            [(eq? '- (poly-non-split-sign split)) (values #f poly #f #f)]
+            [(eq? '= (poly-non-split-sign split))
              ;; Determine +/- value based on normal alignment
-             (if (> (v3:dot (plane-normal splitting-plane) (plane-normal (face->plane face)))
+             (if (> (v3:dot (plane-normal splitting-plane) (plane-normal (poly->plane poly)))
                     0)
-                 (values #f #f face #f)
-                 (values #f #f #f face))])))
+                 (values #f #f poly #f)
+                 (values #f #f #f poly))])))
 
-  (let self ((faces,clips faces,clips) (+splits '()) (-splits '()) (+=splits '()) (-=splits '()))
-    (if (null? faces,clips)
+  (let self ((polys,splits polys,splits) (+splits '()) (-splits '()) (+=splits '()) (-=splits '()))
+    (if (null? polys,splits)
         (values +splits -splits +=splits -=splits)
         (receive (+split -split +=split -=split)
-                 (partition-split (car faces,clips))
-                 (self (cdr faces,clips)
+                 (partition-split (car polys,splits))
+                 (self (cdr polys,splits)
                        (if +split (cons +split +splits) +splits)
                        (if -split (cons -split -splits) -splits)
                        (if +=split (cons +=split +=splits) +=splits)
@@ -73,19 +72,19 @@
               'list (cons (list 'solids applied-faces 'portals '())
                           leaf-list))
         (let* ((splitting-face  (choose-splitting-face candidate-faces))
-               (splitting-plane (face->plane splitting-face))
-               (clip (cut clip-plane-face splitting-plane <>))
-               (candidate-clips (map clip candidate-faces))
-               (applied-clips (map clip applied-faces)))
+               (splitting-plane (poly->plane splitting-face))
+               (split (cut poly-split <> splitting-plane))
+               (candidate-splits (map split candidate-faces))
+               (applied-splits (map split applied-faces)))
           ;; TODO: Add this to sanitization too
           (for-each (lambda (face) (println "Warning: degenerate candidate " face))
-            (filter face-degenerate? candidate-faces))
+            (filter poly-degenerate? candidate-faces))
 
           ;; Partition splits into +/-
           (receive (+candidates -candidates +=candidates -=candidates)
-                   (partition-splits splitting-plane (zip candidate-faces candidate-clips))
+                   (partition-splits splitting-plane (zip candidate-faces candidate-splits))
                    (receive (+applied -applied +=applied -=applied)
-                            (partition-splits splitting-plane (zip applied-faces applied-clips))
+                            (partition-splits splitting-plane (zip applied-faces applied-splits))
                             ;; Planar candidates are moved to the applied set to prevent re-splitting along the same plane
                             ;; Planar faces that share the splitting normal are pushed right
                             ;; Planar faces with opposite normals are pushed left
@@ -97,7 +96,6 @@
                                    (tree-lhs (make-bsp-tree -candidate-faces -applied-faces index leaf-list))
                                    (tree-rhs (make-bsp-tree +candidate-faces +applied-faces (pget tree-lhs 'index) (pget tree-lhs 'list))))
 
-                              ;; Return size.tree branch with splitting plane data, lhs negative and rhs positive
                               (plist-put tree-rhs 'tree (make-tree splitting-plane
                                                                    (pget tree-lhs 'tree)
                                                                    (pget tree-rhs 'tree)))))))))
@@ -109,7 +107,7 @@
               'vector (list->vector (reverse (pget bsp-tree 'list)))
               'faces faces))))
 
-;; Takes the bsp, turns each unique faceplane into a boundary-clipped poly, then inserts each into the bsp tree in a special way
+;; Takes the bsp, turns each unique plane into a boundary-clipped poly, then inserts each into the bsp tree in a special way
 ;; When portal polys lie coincident with a branch plane, they get sent down _both_ ends of the branch as siblings!
 ;; When they eventually settle into their respective convex hull, they join the two sibling hulls with the notion of being connected via portal.
 ;; This gives a notion of adjacency; the +hull is adjacent to the -hull
@@ -135,18 +133,18 @@
 
       ;; Else, not a leaf. Branches have splitting planes as their data
       (let* ((splitplane (tree-datum bsp-tree))
-             (clip (clip-plane-face splitplane bounds-face)))
-        (cond [(clip-clipped? clip)
-               (fill-neighborhood (tree-rhs bsp-tree) (clip-+face clip)
-                 (fill-neighborhood (tree-lhs bsp-tree) (clip--face clip) neighbors))]
-              [(eq? (clip-sign clip) '+)
+             (split (poly-split bounds-face splitplane)))
+        (cond [(poly-split? split)
+               (fill-neighborhood (tree-rhs bsp-tree) (poly-+split split)
+                 (fill-neighborhood (tree-lhs bsp-tree) (poly--split split) neighbors))]
+              [(eq? (poly-non-split-sign split) '+)
                (fill-neighborhood (tree-rhs bsp-tree) bounds-face neighbors)]
-              [(eq? (clip-sign clip) '-)
+              [(eq? (poly-non-split-sign split) '-)
                (fill-neighborhood (tree-lhs bsp-tree) bounds-face neighbors)]
 
               ;; If ANOTHER coincident splitplane is present while we're already generating a neighborhood, we've broken an invariant
               ;; Once we split by a given plane, it should never appear again as a splitplane
-              [(eq? (clip-sign clip) '=)
+              [(eq? (poly-non-split-sign split) '=)
                (error "Invariant broken: Identical splitplane found multiple times in bsp path")]))))
 
 (define (find-neighborhoods bsp-tree bounds-face neighborhoods)
@@ -156,17 +154,17 @@
 
       ;; Else, not a leaf. Branches have splitting planes as their data
       (let* ((splitplane (tree-datum bsp-tree))
-             (clip (clip-plane-face splitplane bounds-face)))
-        (cond [(clip-clipped? clip)
-               (find-neighborhoods (tree-rhs bsp-tree) (clip-+face clip)
-                 (find-neighborhoods (tree-lhs bsp-tree) (clip--face clip) neighborhoods))]
-              [(eq? (clip-sign clip) '+)
+             (split (poly-split bounds-face splitplane)))
+        (cond [(poly-split? split)
+               (find-neighborhoods (tree-rhs bsp-tree) (poly-+split split)
+                 (find-neighborhoods (tree-lhs bsp-tree) (poly--split split) neighborhoods))]
+              [(eq? (poly-non-split-sign split) '+)
                (find-neighborhoods (tree-rhs bsp-tree) bounds-face neighborhoods)]
-              [(eq? (clip-sign clip) '-)
+              [(eq? (poly-non-split-sign split) '-)
                (find-neighborhoods (tree-lhs bsp-tree) bounds-face neighborhoods)]
 
               ;; Neighborhood candidate found
-              [(eq? (clip-sign clip) '=)
+              [(eq? (poly-non-split-sign split) '=)
                (let ((neighborhood (gen-neighborhood bsp-tree bounds-face)))
                  (cons neighborhood neighborhoods))]))))
 
@@ -180,7 +178,7 @@
            (left-face (pget left-neighbor 'face))
            (right-index (pget right-neighbor 'index))
            (right-face (pget right-neighbor 'face))
-           (intersection (face:intersection left-face right-face)))
+           (intersection (poly-intersection left-face right-face)))
       (and intersection
            (list 'indices `(,left-index ,right-index)
                  'face    intersection))))
@@ -209,13 +207,13 @@
   (let* ((bsp-tree   (pget bsp 'tree))
          (bsp-vector (pget bsp 'vector))
          (faces      (pget bsp 'faces))
-         (planes (map face->plane faces))
+         (planes (map poly->plane faces))
          (hash-plane (lambda (plane size)
                        (let ((h1 (vec3-hash (plane-normal plane) size))
                              (h2 (vec3-hash (plane-normal (plane-flip plane)) size)))
                          (hash (+ h1 h2) size))))
          (unique-planes (dedup-hash planes hash-plane plane~=))
-         (clip (lambda (plane) (or (clip-plane-boundary plane boundary)
+         (clip (lambda (plane) (or (plane-clip-boundary plane boundary)
                                    (error "Could not clip plane to boundary."
                                           "Plane: " plane
                                           "Boundary: " boundary))))
@@ -243,18 +241,18 @@
             (for-each (lambda (run) ;; Each run is guaranteed to be non-empty
                         (let* ((leaf-index (index-fn (car run)))
                                (leaf-data (vector-ref bsp-vector leaf-index))
-                               (plane (face->plane face))
+                               (plane (poly->plane face))
                                (covering-set (pget leaf-data 'solids))
-                               (covering-set (filter (lambda (solid) (plane~= plane (face->plane solid))) covering-set))
-                               (covering-set (face:carve-all covering-set)))
+                               (covering-set (filter (lambda (solid) (plane~= plane (poly->plane solid))) covering-set))
+                               (covering-set (poly-carve-all covering-set)))
                           (for-each (lambda (pairing)
                                       (let* ((dest-index (dest-fn pairing))
                                              (portal-face (pget pairing 'face))
-                                             (portal-area (face:area portal-face))
+                                             (portal-area (poly-area portal-face))
                                              (portal-covering-set (filter-map (lambda (face)
-                                                                                (face:intersection portal-face face))
+                                                                                (poly-intersection portal-face face))
                                                                               covering-set))
-                                             (covering-area (apply + (map face:area portal-covering-set)))
+                                             (covering-area (apply + (map poly-area portal-covering-set)))
                                              (portals (pget leaf-data 'portals))
                                              (new-portal (list 'face portal-face 'neighbor dest-index))
                                              (new-leaf-data (pput leaf-data 'portals (cons new-portal portals))))

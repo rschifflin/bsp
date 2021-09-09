@@ -13,15 +13,15 @@
 (define-syntax define-trait
   (syntax-rules (<self> :)
     ;; Full syntax
-    ((define-trait name : supertrait ((method-name (self <self>) (arg type) ...) ...))
+    ((define-trait name : supertrait ((method-name (self <self>) rest ...) ...))
      (begin
        (define-class name (supertrait) #:metaclass <trait>)
-       (define-method (method-name (self name) (arg type) ...)
+       (define-method (method-name (self name) rest ...)
                       (error "Trait not implemented for object." name self)) ...))
 
     ;; Without explicit supertrait defaults to none
-    ((define-trait name ((method-name (self <self>) (arg type) ...) ...))
+    ((define-trait name ((method-name (self <self>) rest ...) ...))
      (begin
        (define-class name () #:metaclass <trait>)
-       (define-method (method-name (self name) (arg type) ...)
+       (define-method (method-name (self name) rest ...)
                       (error "Trait not implemented for object." name self)) ...))))

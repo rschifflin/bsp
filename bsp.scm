@@ -13,6 +13,8 @@
   (bsp geo bounds)
   (bsp geo vec3)
   (bsp geo face)
+  (bsp geo poly)
+  (bsp surface)
   (bsp lib))
 
 (define args (cdr (command-line)))
@@ -48,12 +50,18 @@
          (edges (zip (cons (last points) points) points))
          (sanitized (make-face (sanitize-edges edges #f))))
     (cond [(< (length (face-points sanitized)) 3) (error "could not save face: " face)]
-          [(not (face-planar? sanitized)) (error "face not planar: " face)]
+          [(not (poly-planar? sanitized)) (error "face not planar: " face)]
           [else sanitized])))
 
 (define faces (map sanitize-face raw-faces))
+(define surfaces (map (lambda (face)
+                        (make-surface (list 'points (face-points face)
+                                            'uvs '()
+                                            'material-id 0)))
+                      faces))
 
 (println "Ingesting " (length faces) " sanitized faces")
+(println "Surface area: " (poly-area (car surfaces)))
 (println "Starting tree-ify")
 
 (define bsp (make-bsp faces))

@@ -80,7 +80,9 @@ that aren't directly relevant to the problem space:
 
 ## Geo
 The linear algebra submodule, which logically groups all the geometric primitive modules:
-- `(bsp geo face)` defines faces as convex planar lists of ordered points
+- `(bsp geo consts)` defines module-wide constants
+- `(bsp geo poly)` defines a trait for operations on convex planar polygons
+- `(bsp geo face)` defines faces as convex planar lists of ordered points. Implements poly
 - `(bsp geo line)` defines lines as a point on the line and a direction normal vector
 - `(bsp geo plane)` defines planes as a point on the plane and a facing normal vector
 - `(bsp geo vec3)` defines 3-element vectors
@@ -93,8 +95,8 @@ The serialization/deserialization submodule gives us helpers for importing/expor
 
 ## Main
 The bsp module itself contains a few directly relevant submodules
+- `(bsp surface)` defines surfaces as mesh faces with associated mesh data. Implements poly
 - `(bsp lib)` exports the main `make-bsp` function and the various operations on it.
-- `(bsp clip)` handles clipping faces
 - `(bsp portal)` handles portal generation
 
 An example script, `bsp.scm`, shows the use cases for `(bsp lib)`. By default,

@@ -20,3 +20,30 @@
 
 (define (line-dir line)
   (cdr line))
+
+;; Helper function to determine if two co-linear segments defined by the lists (a0 a1) and (b0 b1), where ax and bx are vec3 points,
+;; overlap or not.
+(define (line-segments-overlap? segment1 segment2)
+  (let* ((a0 (first segment1))
+         (a1 (second segment1))
+         (bi (first segment2))  ;; The ordering of b0 and b1 are unclear
+         (bj (second segment2)) ;; Label i and j initially until ordering is known
+
+         ;; If the segment2 vector points opposite the segment1 vector, flip it
+         ;; This orders segment2 such that the vector b1-b0 points the same direction as the vector a1-a0
+         (segment2 (if (< (v3:dot (v3:sub a1 a0)
+                                  (v3:sub bj bi))
+                               0)
+                            (reverse segment2)
+                            segment2))
+         (b0 (first segment2))
+         (b1 (second segment2)))
+
+    ;; If any of the following conditions hold, the line segments must overlap:
+    (or (v3:~= b0 a0)                                   ;; b0 ~= a0
+        (v3:~= b1 a1)                                   ;; b1 ~= a1
+        (> (v3:dot (v3:sub b0 a0) (v3:sub a1 b0)) 0)    ;; b0 between a0 and a1
+        (> (v3:dot (v3:sub b1 a0) (v3:sub a1 b1)) 0)    ;; b1 between a0 and a1
+        (> (v3:dot (v3:sub a0 b0) (v3:sub b1 a0)) 0)    ;; a0 between b0 and b1
+        (> (v3:dot (v3:sub a1 b0) (v3:sub b1 a1)) 0)))) ;; a1 between b0 and b1
+
