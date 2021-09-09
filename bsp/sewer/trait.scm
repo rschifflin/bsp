@@ -10,18 +10,24 @@
                #:re-export (define-method))
 
 (define-class <trait> (<class>))
-(define-syntax define-trait
-  (syntax-rules (<self> :)
-    ;; Full syntax
-    ((define-trait name : supertrait ((method-name (self <self>) rest ...) ...))
-     (begin
-       (define-class name (supertrait) #:metaclass <trait>)
-       (define-method (method-name (self name) rest ...)
-                      (error "Trait not implemented for object." name self)) ...))
 
-    ;; Without explicit supertrait defaults to none
-    ((define-trait name ((method-name (self <self>) rest ...) ...))
+(define-syntax define-trait-methods
+  (syntax-rules (<self>)
+    ((define-trait-methods name ((method-name (self <self>) rest ...) ...))
      (begin
-       (define-class name () #:metaclass <trait>)
        (define-method (method-name (self name) rest ...)
                       (error "Trait not implemented for object." name self)) ...))))
+
+(define-syntax define-trait
+  (syntax-rules (:)
+    ;; Full syntax
+    ((define-trait name : supertrait methods)
+     (begin
+       (define-class name (supertrait) #:metaclass <trait>)
+       (define-trait-methods name methods)))
+
+    ;; Without explicit supertrait defaults to none
+    ((define-trait name methods)
+     (begin
+       (define-class name () #:metaclass <trait>)
+       (define-trait-methods name methods)))))
