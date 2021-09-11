@@ -16,7 +16,7 @@
     ((define-trait-methods name ((method-name (self <self>) rest ...) ...))
      (begin
        (define-method (method-name (self name) rest ...)
-                      (error "Trait not implemented for object." name self)) ...))))
+                      (error "Method on trait not implemented for object." method-name name self)) ...))))
 
 (define-syntax define-trait
   (syntax-rules (:)

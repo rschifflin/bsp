@@ -8,6 +8,7 @@
   (bsp sewer alist)
   (bsp sewer plist)
   (bsp sewer display)
+  (bsp sewer tree)
   (bsp serde import)
   (bsp serde export)
   (bsp geo bounds)
@@ -145,3 +146,9 @@
                                          port)))
 
 (println "Export complete")
+(vector-for-each (lambda (i plst)
+                   (if (null? (pget plst 'children))
+                       (println i ": LEAF " (vector-ref (pget bsp 'vector) (pget plst 'datum)))
+                       (println i ": BRANCH " plst)
+                       ))
+                 (tree->vector (pget bsp 'tree)))

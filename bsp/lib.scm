@@ -101,7 +101,10 @@
                                                                    (pget tree-rhs 'tree)))))))))
 
   (if (null? faces)
-      '()
+      (list 'tree tree-null
+            'vector #()
+            'faces '())
+
       (let ((bsp-tree (make-bsp-tree faces '() 0 '())))
         (list 'tree (pget bsp-tree 'tree)
               'vector (list->vector (reverse (pget bsp-tree 'list)))
