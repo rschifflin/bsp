@@ -46,10 +46,14 @@
 
     ;; Turn a vectree into an alist
     ;; of  (datum . n)
+    ;;     (parent . n) if present,
     ;; and (children . [m ...])
     (vector-map! (lambda (i vectree-el)
-                   (list (cons 'datum (pget vectree-el 'datum))
-                         (cons 'children (list->vector (pget vectree-el 'children)))))
+                   (let ((parent (pget vectree-el 'parent)))
+                     (filter identity (list
+                       (cons 'datum (pget vectree-el 'datum))
+                       (and parent (cons 'parent parent))
+                       (cons 'children (list->vector (pget vectree-el 'children)))))))
                  vectree)
 
     ;; Turn a plane into an alist of (point . #(float float float)) and (normal . #(float float float))

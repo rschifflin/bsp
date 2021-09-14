@@ -87,23 +87,30 @@
     ;; Record the current index on the stack
     (define (pre _ state)
       (let ((counter (pget state 'counter))
-            (stack (pget state 'stack)))
+            (parent-stack (pget state 'parent-stack))
+            (child-stack (pget state 'child-stack)))
         (list 'counter (+ counter 1)
-              'stack (cons counter (cons 'delim stack)))))
+              'parent-stack (cons counter parent-stack)
+              'child-stack (cons counter (cons 'delim child-stack)))))
 
-    ;; Pull the lastest children and index off the stack, write it, and push the index back onto the stack
+    ;; Pull the lastest children and index off the child-stack, write it, and push the index back onto the child-stack
     (define (post datum state)
       (let ((counter (pget state 'counter))
-            (stack (pget state 'stack)))
-        (let self ((stack stack) (popped '()))
-          (if (not (eq? 'delim (car stack))) ;; Until we hit a delimiter...
-              (self (cdr stack) (cons (car stack) popped)) ;; ...Keep popping elements off the stack
-              (begin
+            (parent-stack (pget state 'parent-stack))
+            (child-stack (pget state 'child-stack)))
+        (let self ((child-stack child-stack) (popped '()))
+          (if (not (eq? 'delim (car child-stack))) ;; Until we hit a delimiter...
+              (self (cdr child-stack) (cons (car child-stack) popped)) ;; ...Keep popping elements off the child-stack
+              (let ((parents (cdr parent-stack)))
+                (if (null? parents)
+                    (vector-set! v (car popped) (list 'datum datum 'children (cdr popped))) ;; Root node, no parent
+                    (vector-set! v (car popped) (list 'datum datum 'parent (car parents) 'children (cdr popped)))) ;; Sub-root branch node
                 ;; Popped holds index, child1, child2, ..., childn
                 ;; Perform write to V
-                (vector-set! v (car popped) (list 'datum datum 'children (cdr popped)))
-                ;; Push our index back onto the stack without the delimiter, to be counted as a child for the next parent
+
+                ;; Push our index back onto the child-stack without the delimiter, to be counted as a child for the next parent
                 (list 'counter counter
-                      'stack (cons (car popped) (cdr stack))))))))
-    (tree-fold-both pre post (list 'counter 0 'stack '()) tree)
+                      'parent-stack parents
+                      'child-stack (cons (car popped) (cdr child-stack))))))))
+    (tree-fold-both pre post (list 'counter 0 'parent-stack '() 'child-stack '()) tree)
     v))
