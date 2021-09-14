@@ -1,9 +1,12 @@
 (define-module (bsp geo line)
+               #:use-module (srfi srfi-1)
                #:use-module (bsp geo vec3)
                #:export (make-line
                          make-line-from-points
                          line-point
-                         line-dir))
+                         line-dir
+                         line-segments-overlap?
+                         ))
 
 (define (make-line point dir)
   (cons point dir))

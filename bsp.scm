@@ -1,6 +1,7 @@
 (add-to-load-path (getcwd))
 (use-modules
   (srfi srfi-1) ; list-index
+  (srfi srfi-26) ; cut
   (srfi srfi-43) ; Vector map
   (srfi srfi-180) ; Json parsing
   (ice-9 receive) ; Multiple-returns
@@ -89,14 +90,12 @@
 (println "Outside count: ")
 (println (length outside-leafs))
 
-;;; TODO: Enable rebuilding the bsp tree using only the inside leafs
-#|
+;;; TODO: Use whole faces instead of split faces if possible
 (println "Rebuilding the bsp tree using only the inside leaves...")
 (define faces (flat-map (lambda (leaf) (pget leaf 'solids)) inside-leafs))
 (define bsp (make-bsp faces))
 (add-bsp-portals! bsp boundary)
 (define inside-leafs (bsp-leafs bsp))
-|#
 
 (define (make-indexed-faces leaf)
   (define (make-indexed-face len.verts face)
@@ -145,10 +144,6 @@
                                                         inside-leafs))
                                          port)))
 
+(println "Exporting full bsp")
+(call-with-output-file "bsp.json" (cut export-bsp bsp <>))
 (println "Export complete")
-(vector-for-each (lambda (i plst)
-                   (if (null? (pget plst 'children))
-                       (println i ": LEAF " (vector-ref (pget bsp 'vector) (pget plst 'datum)))
-                       (println i ": BRANCH " plst)
-                       ))
-                 (tree->vector (pget bsp 'tree)))
