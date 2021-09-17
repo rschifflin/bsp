@@ -256,14 +256,17 @@
                                                                                 (poly-intersection portal-face face))
                                                                               covering-set))
                                              (covering-area (apply + (map poly-area portal-covering-set)))
-                                             (portals (pget leaf-data 'portals))
+                                             (latest-leaf-data (vector-ref bsp-vector leaf-index))
+                                             (portals (pget latest-leaf-data 'portals))
                                              (new-portal (list 'face portal-face 'neighbor dest-index))
-                                             (new-leaf-data (pput leaf-data 'portals (cons new-portal portals))))
+                                             (new-leaf-data (pput latest-leaf-data 'portals (cons new-portal portals))))
 
                                         ;; If the portal is less than 99.9999% covered, consider it valid
                                         (if (< (/ covering-area portal-area) FULL_COVERING_RATIO)
-                                            (vector-set! bsp-vector leaf-index new-leaf-data))))
-                                    run)))
+                                            (vector-set! bsp-vector leaf-index new-leaf-data))
+                                        ))
+                                    run)
+                          ))
                       index-runs)))
 
         ;; Write the lhs portals, pointing to the rhs neighbors
