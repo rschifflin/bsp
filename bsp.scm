@@ -95,7 +95,8 @@
 (define faces (flat-map (lambda (leaf) (pget leaf 'solids)) inside-leafs))
 (define bsp (make-bsp faces))
 (add-bsp-portals! bsp boundary)
-(define inside-leafs (bsp-leafs bsp))
+(mark-inside! bsp inside)
+(define inside-leafs (filter (lambda (leaf) (plist-ref leaf 'inside?)) leafs))
 
 (define (make-indexed-faces leaf)
   (define (make-indexed-face len.verts face)

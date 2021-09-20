@@ -69,27 +69,30 @@
     ;;                  (neighbor . n)) ...])
     ;; for json serialization
     ;; Map non-destructively as volumes come from the source bsp itself
-    (let ((volumes
-            (vector-map (lambda (i volume)
-                          ;; (solids . [[#(float float float) ...] ...])
-                          (list (cons 'solids (list->vector
-                                                (map
-                                                  (lambda (poly)
-                                                    (list->vector (map vec3->vector (poly-points poly))))
-                                                  (pget volume 'solids))))
-                                ;; (portals . [((face . [#(float float float) ...])
-                                ;;              (neighbor . n)) ...])
-                                (cons 'portals (list->vector
-                                                 (map
-                                                   (lambda (portal)
-                                                     (list (cons 'face
-                                                                 (list->vector
-                                                                   (map vec3->vector
-                                                                        (poly-points (pget portal 'face)))))
-                                                           (cons 'neighbor
-                                                                 (pget portal 'neighbor))))
-                                                   (pget volume 'portals))))))
-                        volumes)))
+    (let* ((null-volume (list (cons 'solids #()) (cons 'portals #())))
+           (volumes
+             (vector-map (lambda (i volume)
+                           (if (not (pget volume 'inside?))
+                               null-volume
+                               ;; (solids . [[#(float float float) ...] ...])
+                               (list (cons 'solids (list->vector
+                                                     (map
+                                                       (lambda (poly)
+                                                         (list->vector (map vec3->vector (poly-points poly))))
+                                                       (pget volume 'solids))))
+                                     ;; (portals . [((face . [#(float float float) ...])
+                                     ;;              (neighbor . n)) ...])
+                                     (cons 'portals (list->vector
+                                                      (map
+                                                        (lambda (portal)
+                                                          (list (cons 'face
+                                                                      (list->vector
+                                                                        (map vec3->vector
+                                                                             (poly-points (pget portal 'face)))))
+                                                                (cons 'neighbor
+                                                                      (pget portal 'neighbor))))
+                                                        (pget volume 'portals)))))))
+                         volumes)))
 
       ;; Final json format
       (json-write (list (cons 'tree vectree)
