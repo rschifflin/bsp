@@ -13,10 +13,9 @@ or simple way to navigate within it or operate over it. We want a datastructure 
 2. An efficient back-to-front ordering of these volumes can be found for any given axis
 2. volumes can be looked up efficiently for any given point
 
-Convex volumes are useful in general to work with because any point within a convex volumes is reachable from any other point.
-This greatly simplifies a number of problems when working with volumes. Back-to-front orderings are very useful for drawing
-a scene, as we can draw the furthest volumes first and draw the nearer volumes on top of them (the painter's algorithm). Volume
-lookup is useful to locate point entities and their nearby surroundings within a scene.
+Convex volumes are useful in general to work with because any point within a convex volume is reachable from any other point.
+This greatly simplifies a number of problems when working with 3D spaces. Back-to-front orderings are very useful for painting a scene. Point
+lookup to the nearest volume is useful to find the point and its nearby surroundings within a scene.
 
 ## The solution
 Binary space partitioning! The theory goes likes this:
@@ -97,7 +96,6 @@ The serialization/deserialization submodule gives us helpers for importing/expor
 The bsp module itself contains a few directly relevant submodules
 - `(bsp surface)` defines surfaces as mesh faces with associated mesh data. Implements poly
 - `(bsp lib)` exports the main `make-bsp` function and the various operations on it.
-- `(bsp portal)` handles portal generation
 
 An example script, `bsp.scm`, shows the use cases for `(bsp lib)`. By default,
 it expects a file `concave.json` and produces `convex.json` and `portal.json`
